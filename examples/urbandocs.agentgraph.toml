@@ -1,0 +1,68 @@
+# Feature map for urbandocs. To use it without --map, copy it to
+# ~/Projects/Ayuntamiento/urbandocs/.agentgraph.toml and drop `root` below.
+
+[project]
+name = "urbandocs"
+root = "~/Projects/Ayuntamiento/urbandocs"
+
+[[node]]
+id = "server"
+label = "MCP server"
+paths = ["src/urbandocs/server.py"]
+
+[[node]]
+id = "search"
+label = "Search & read"
+paths = ["src/urbandocs/search.py", "src/urbandocs/resolve.py", "src/urbandocs/read.py"]
+
+[[node]]
+id = "substrate"
+label = "Substrate"
+paths = ["src/urbandocs/substrate.py", "src/urbandocs/paths.py"]
+
+[[node]]
+id = "ingest"
+label = "Ingest & corpus"
+paths = [
+  "src/urbandocs/ingest.py",
+  "src/urbandocs/check_*.py",
+  "corpus/**",
+  "documentos/**",
+  "tools/docling-convert/**",
+]
+
+[[node]]
+id = "ocr"
+label = "OCR scripts"
+paths = ["scripts/**"]
+
+[[node]]
+id = "evals"
+label = "Evals"
+paths = ["evals/**"]
+
+[[node]]
+id = "tests"
+label = "Tests"
+paths = ["tests/**"]
+
+[[node]]
+id = "docs"
+label = "Docs"
+paths = ["docs/**", "*.md"]
+
+[[edge]]
+from = "server"
+to = "search"
+
+[[edge]]
+from = "search"
+to = "substrate"
+
+[[edge]]
+from = "ingest"
+to = "substrate"
+
+[[edge]]
+from = "evals"
+to = "server"
