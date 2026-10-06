@@ -76,6 +76,16 @@ Globs are relative to the root and work like `.gitignore`: `*` stays within one 
 
 Every link records its source and a confidence value (1.0 for all v1 sources), ready for a v2 classifier.
 
+## Development
+
+After cloning, enable the versioned pre-commit hook once:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+It runs the same checks as CI: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and `scripts/check-pure.sh`.
+
 ## Roadmap
 
 - **v2:** a classifier interface (Jev / LLM) for issue → module before code exists, and for agent → issue when the branch name says nothing; confidence shown in the graph; `agentgraph eval` replaying merged PRs as labelled data.
