@@ -13,3 +13,7 @@ Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 ### Domain docs
 
 Single-context layout (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.
+
+### herdr API reference
+
+Use the docs bundled with the installed herdr (`herdr --version`), which match it exactly: `herdr --skill` for CLI usage, `herdr api schema --json` (or `--output FILE`) for the socket API schema (agents, `events.subscribe`, plugins).
