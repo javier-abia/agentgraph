@@ -67,10 +67,10 @@ fn agent_chip(a: &AgentNode, style: &Style) -> String {
         a.agent.agent,
         style.dim(&a.agent.pane_id),
     );
-    if let Some(wt) = &a.worktree {
-        let _ = write!(chip, " {}", style.paint("36", &format!("⎇ {wt}")));
-    } else if let Some(branch) = &a.branch {
-        let _ = write!(chip, " {}", style.paint("36", &format!("⎇ {branch}")));
+    // The branch is what links an agent to an issue; the worktree folder
+    // name only stands in for it on a detached HEAD.
+    if let Some(label) = a.branch.as_ref().or(a.worktree.as_ref()) {
+        let _ = write!(chip, " {}", style.paint("36", &format!("⎇ {label}")));
     }
     match a.issue.as_ref().map(|l| l.source) {
         Some(LinkSource::TitleMatch) => chip.push_str(&style.dim(" (title match)")),
@@ -248,4 +248,42 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::herdr::Agent;
+    use std::path::PathBuf;
+
+    fn node(branch: Option<&str>, worktree: Option<&str>) -> AgentNode {
+        AgentNode {
+            agent: Agent {
+                agent: "claude".into(),
+                agent_status: "working".into(),
+                pane_id: "w1:p1".into(),
+                cwd: PathBuf::from("/repo"),
+                title: None,
+            },
+            branch: branch.map(Into::into),
+            worktree: worktree.map(Into::into),
+            issue: None,
+        }
+    }
+
+    #[test]
+    fn chip_shows_branch_over_worktree_folder() {
+        let chip = agent_chip(
+            &node(Some("tool-schema"), Some("srv")),
+            &Style { color: false },
+        );
+        assert!(chip.contains("⎇ tool-schema"), "{chip}");
+        assert!(!chip.contains("srv"), "{chip}");
+    }
+
+    #[test]
+    fn chip_falls_back_to_worktree_on_detached_head() {
+        let chip = agent_chip(&node(None, Some("srv")), &Style { color: false });
+        assert!(chip.contains("⎇ srv"), "{chip}");
+    }
 }
