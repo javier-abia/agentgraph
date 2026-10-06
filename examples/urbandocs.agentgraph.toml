@@ -1,26 +1,45 @@
-# Feature map for urbandocs. To use it without --map, copy it to
+# Module map for urbandocs. To use it without --map, copy it to
 # ~/Projects/Ayuntamiento/urbandocs/.agentgraph.toml and drop `root` below.
 
 [project]
 name = "urbandocs"
 root = "~/Projects/Ayuntamiento/urbandocs"
+# Incidental edits that shouldn't pull an issue into a module.
+ignore = ["*.md", "**/uv.lock", "pyproject.toml", ".github/**", ".pre-commit-config.yaml"]
 
-[[node]]
+# Each module lists its tests too, so an issue's tests count toward
+# the module they exercise.
+
+[[module]]
 id = "server"
 label = "MCP server"
-paths = ["src/urbandocs/server.py"]
+paths = ["src/urbandocs/server.py", "tests/unit/test_server.py"]
 
-[[node]]
+[[module]]
 id = "search"
 label = "Search & read"
-paths = ["src/urbandocs/search.py", "src/urbandocs/resolve.py", "src/urbandocs/read.py"]
+paths = [
+  "src/urbandocs/search.py",
+  "src/urbandocs/resolve.py",
+  "src/urbandocs/read.py",
+  "tests/unit/test_search.py",
+  "tests/unit/test_resolve.py",
+  "tests/unit/test_read.py",
+  "tests/unit/test_cite_path.py",
+  "tests/unit/test_parse_cite.py",
+]
 
-[[node]]
+[[module]]
 id = "substrate"
 label = "Substrate"
-paths = ["src/urbandocs/substrate.py", "src/urbandocs/paths.py"]
+paths = [
+  "src/urbandocs/substrate.py",
+  "src/urbandocs/paths.py",
+  "tests/unit/test_substrate.py",
+  "tests/unit/test_paths.py",
+]
 
-[[node]]
+[[module]]
 id = "ingest"
 label = "Ingest & corpus"
 paths = [
@@ -29,27 +48,24 @@ paths = [
   "corpus/**",
   "documentos/**",
   "tools/docling-convert/**",
+  "tests/fixtures/**",
+  "tests/unit/test_fixture_corpus.py",
 ]
 
-[[node]]
-id = "ocr"
-label = "OCR scripts"
+[[module]]
+id = "scripts"
+label = "Scripts"
 paths = ["scripts/**"]
 
-[[node]]
+[[module]]
 id = "evals"
 label = "Evals"
 paths = ["evals/**"]
 
-[[node]]
-id = "tests"
-label = "Tests"
-paths = ["tests/**"]
-
-[[node]]
-id = "docs"
-label = "Docs"
-paths = ["docs/**", "*.md"]
+[[module]]
+id = "research"
+label = "Research"
+paths = ["docs/research/**"]
 
 [[edge]]
 from = "server"

@@ -1,15 +1,23 @@
 # agentgraph
 
-A terminal view of which features of a project your [herdr](https://herdr.dev) agents are working on.
+A terminal view of what your [herdr](https://herdr.dev) agents are doing: which **GitHub issue** each one is on, and which **modules** of the project those issues touch.
 
 ```
-urbandocs · 2 agents (1 working)
+urbandocs · 2 agents (1 working) · 1 elsewhere
 
- · MCP server       —
- ● Evals            ● claude w3:p2 "Add judge rubric"
- ○ (project root)   ○ claude w3:p6 "Set env vars" (idle)
+ · MCP server  —
+ ● Scripts
+     #107 Prototype delegating search→get to a Codex subagent, verbatim-output-first
+       ● codex w2:p1 ⎇ prototype-delegating-search-get-to-a-codex-subag (title match)
+ · Evals  —
 
- edges
+ ? Not placed in a module
+     #63 Render the fidelity disclosure on returned text  · unclaimed
+
+ ? No issue, no changes
+     ○ claude w3:p6 ⎇ main "Fresh start" (idle)
+
+ depends on
    Evals ─▶ MCP server
 ```
 
@@ -20,35 +28,67 @@ cargo run -- --map examples/urbandocs.agentgraph.toml          # print once
 cargo run -- --map examples/urbandocs.agentgraph.toml --watch  # redraw every 2s
 ```
 
-If you leave out `--map`, agentgraph looks for the nearest `.agentgraph.toml` walking up from the current directory. `--snapshot FILE` reads a saved `herdr api snapshot` instead of the live server.
+| Flag | |
+|---|---|
+| `--map FILE` | Module map. Default: nearest `.agentgraph.toml` walking up from the cwd. |
+| `--root DIR` | Overrides `project.root` from the map. |
+| `--watch`, `--interval S` | Redraw continuously. |
+| `--github-ttl S` | How long GitHub data is cached (default 60s). |
+| `--no-github` | Skip GitHub; agents are placed by their changes only. |
+| `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
 
-## Feature map
+Needs `herdr`, `git`, and an authenticated `gh` (the `repo` permission is enough).
+
+## Module map
 
 ```toml
 [project]
 name = "urbandocs"
 root = "~/Projects/Ayuntamiento/urbandocs"  # optional; defaults to the map's directory
+ignore = ["*.md", "**/uv.lock"]            # changes here never place an issue
 
-[[node]]
-id = "evals"
-label = "Evals"
-paths = ["evals/**"]   # globs, relative to root
+[[module]]
+id = "search"
+label = "Search & read"
+paths = ["src/urbandocs/search.py", "tests/unit/test_search.py"]  # include the module's tests
 
 [[edge]]
-from = "evals"
-to = "server"
+from = "server"
+to = "search"   # server depends on search
 ```
 
-## How agents are placed (v0)
+Globs are relative to the root and work like `.gitignore`: `*` stays within one directory, `**` crosses directories.
 
-- Agents come from `herdr api snapshot`, polled.
-- An agent is placed on the first node whose globs cover its **cwd**. Agents in `.claude/worktrees/<name>/` are matched by their path inside the worktree and get a `⎇ name` tag.
-- Agents at the project root, or in a directory no node covers, are listed under `(project root)`.
+## How things get linked
 
-Most agents run from the repo root, so a cwd tells you little. The next step is attributing agents by the files they touch.
+**Project membership.** An agent belongs to the project when its cwd is in a repo with the same git common directory. Worktrees outside the repo folder count.
+
+**Agent → issue**, from the agent's branch (never the default branch), first match wins:
+1. An issue number in the branch name: `fix-score-floor-104`, `user/42-add-thing`.
+2. A branch name that is the start of an open issue's title in branch form: `prototype-delegating-search-get-to-a-codex-subag` → #107.
+3. An open PR from that branch that closes an issue.
+
+**Issue → modules**, first match wins:
+1. `module:<id>` labels on the issue.
+2. The files its agents' branches changed against the default branch, uncommitted and untracked files included, weighted by lines changed. The issue is drawn under its heaviest module; the others are listed as "also".
+
+**What's shown.** Issues with agents, plus open `ready-for-agent` issues without one (marked unclaimed). Agents without an issue are placed by their own changes, or listed separately. Sub-issues are grouped under their parent.
+
+Every link records its source and a confidence value (1.0 for all v1 sources), ready for a v2 classifier.
+
+## Development
+
+After cloning, enable the versioned pre-commit hook once:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+It runs the same checks as CI: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and `scripts/check-pure.sh`.
 
 ## Roadmap
 
-- **v1:** tail each agent's transcript (herdr's `agent_session` id → `~/.claude/projects/<slug>/<id>.jsonl`), map edited/read files to nodes with recency decay; switch to the herdr socket and `events.subscribe`; ratatui view with Enter → `agent.focus`.
-- **v2:** ship as a herdr plugin (`herdr-plugin.toml` pane + keybinding); `agentgraph claim <node>` for explicit attribution via a Claude Code hook.
-- **v3:** generated feature maps, activity history, non-Claude transcript formats.
+- **v2:** a classifier interface (Jev / LLM) for issue → module before code exists, and for agent → issue when the branch name says nothing; confidence shown in the graph; `agentgraph eval` replaying merged PRs as labelled data.
+- `agentgraph init`: an LLM agent proposes the first module map.
+- Transcript reading for files an agent has read but not changed.
+- An interactive ratatui view (Enter → `agent.focus`), the herdr socket and `events.subscribe`, packaging as a herdr plugin.

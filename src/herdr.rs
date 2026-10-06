@@ -62,3 +62,19 @@ pub fn fetch_agents(file: Option<&Path>) -> Result<Vec<Agent>> {
     };
     parse_snapshot(&json)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_agents_from_a_snapshot_ignoring_unknown_fields() {
+        let agents = parse_snapshot(include_str!("../tests/fixtures/snapshot.json")).unwrap();
+        assert_eq!(agents.len(), 4);
+        assert_eq!(agents[0].title.as_deref(), Some("Set env vars"));
+        assert_eq!(
+            agents[2].cwd,
+            Path::new("/repo/.claude/worktrees/fix-ranking/src/search")
+        );
+    }
+}
