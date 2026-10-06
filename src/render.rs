@@ -1,10 +1,10 @@
-//! Plain-text renderer. v1 replaces this with a ratatui view; keeping the
-//! v0 output a pure function of the state makes it easy to snapshot-test.
+//! Plain-text renderer: modules, the issues under them, the agents on those
+//! issues. A thin view over `Graph`; all decisions are made in `graph`.
 
 use std::fmt::Write;
 
-use crate::attribution::{GraphState, Placed};
-use crate::featuremap::FeatureMap;
+use crate::graph::{AgentNode, Graph, IssueNode, LinkSource};
+use crate::modulemap::ModuleMap;
 
 pub struct Style {
     pub color: bool,
@@ -17,6 +17,12 @@ impl Style {
         } else {
             text.to_string()
         }
+    }
+    fn dim(&self, text: &str) -> String {
+        self.paint("2", text)
+    }
+    fn bold(&self, text: &str) -> String {
+        self.paint("1", text)
     }
 }
 
@@ -37,116 +43,208 @@ fn status_dot(status: &str) -> &'static str {
     }
 }
 
-/// The dot for a node: the "busiest" status among its agents.
-fn node_status(agents: &[Placed]) -> Option<&str> {
+/// The "busiest" status among some agents, for a module's dot.
+fn busiest<'a>(agents: impl Iterator<Item = &'a AgentNode>) -> Option<&'a str> {
+    let statuses: Vec<&str> = agents.map(|a| a.agent.agent_status.as_str()).collect();
     ["blocked", "error", "working"]
         .into_iter()
-        .find(|s| agents.iter().any(|p| p.agent.agent_status == *s))
-        .or_else(|| agents.first().map(|p| p.agent.agent_status.as_str()))
+        .find(|s| statuses.contains(s))
+        .or_else(|| statuses.first().copied())
 }
 
-fn agent_chip(p: &Placed, style: &Style) -> String {
-    let a = &p.agent;
+fn dot(status: Option<&str>, style: &Style) -> String {
+    match status {
+        Some(s) => style.paint(status_code(s), status_dot(s)),
+        None => style.dim("·"),
+    }
+}
+
+fn agent_chip(a: &AgentNode, style: &Style) -> String {
+    let s = &a.agent.agent_status;
     let mut chip = format!(
         "{} {} {}",
-        style.paint(status_code(&a.agent_status), status_dot(&a.agent_status)),
-        a.agent,
-        style.paint("2", &a.pane_id),
+        style.paint(status_code(s), status_dot(s)),
+        a.agent.agent,
+        style.dim(&a.agent.pane_id),
     );
-    if let Some(wt) = &p.worktree {
+    if let Some(wt) = &a.worktree {
         let _ = write!(chip, " {}", style.paint("36", &format!("⎇ {wt}")));
+    } else if let Some(branch) = &a.branch {
+        let _ = write!(chip, " {}", style.paint("36", &format!("⎇ {branch}")));
     }
-    if let Some(title) = a.title.as_deref().filter(|t| !t.is_empty()) {
+    match a.issue.as_ref().map(|l| l.source) {
+        Some(LinkSource::TitleMatch) => chip.push_str(&style.dim(" (title match)")),
+        Some(LinkSource::PullRequest) => chip.push_str(&style.dim(" (via PR)")),
+        _ => {}
+    }
+    if let Some(title) = a.agent.title.as_deref().filter(|t| !t.is_empty()) {
         let _ = write!(chip, " \"{title}\"");
     }
-    if a.agent_status != "working" {
-        let _ = write!(
-            chip,
-            " {}",
-            style.paint("2", &format!("({})", a.agent_status))
-        );
+    if s != "working" {
+        chip.push_str(&style.dim(&format!(" ({s})")));
     }
     chip
 }
 
-pub fn render(map: &FeatureMap, state: &GraphState, style: &Style) -> String {
+const INDENT: &str = "     ";
+
+fn render_issues(out: &mut String, issues: &[IssueNode], map: &ModuleMap, style: &Style) {
+    // Top-level issues first, then sub-issues grouped under their parent.
+    let mut order: Vec<&IssueNode> = issues.iter().collect();
+    order.sort_by_key(|i| (i.parent.as_ref().map(|p| p.number), i.number));
+
+    let mut current_parent = None;
+    for issue in order {
+        let mut indent = INDENT.to_string();
+        if let Some(parent) = &issue.parent {
+            if current_parent != Some(parent.number) {
+                current_parent = Some(parent.number);
+                let _ = writeln!(
+                    out,
+                    "{INDENT}{}",
+                    style.dim(&format!("#{} {}", parent.number, parent.title))
+                );
+            }
+            indent.push_str("  ");
+        }
+
+        let _ = write!(
+            out,
+            "{indent}{} {}",
+            style.bold(&format!("#{}", issue.number)),
+            issue.title
+        );
+        if issue.agents.is_empty() {
+            out.push_str(&style.paint(
+                "35",
+                if issue.ready {
+                    "  · unclaimed"
+                } else {
+                    "  · no agent"
+                },
+            ));
+        }
+        out.push('\n');
+
+        for a in &issue.agents {
+            let _ = writeln!(out, "{indent}  {}", agent_chip(a, style));
+        }
+
+        let mut notes = Vec::new();
+        if issue
+            .modules
+            .first()
+            .is_some_and(|l| l.source == LinkSource::Label)
+        {
+            notes.push("by label".to_string());
+        }
+        let also: Vec<String> = issue
+            .modules
+            .iter()
+            .skip(1)
+            .map(|l| format!("{} {:.0}%", map.modules[l.target].label, l.weight * 100.0))
+            .collect();
+        if !also.is_empty() {
+            notes.push(format!("also: {}", also.join(", ")));
+        }
+        if !notes.is_empty() {
+            let _ = writeln!(out, "{indent}  {}", style.dim(&notes.join(" · ")));
+        }
+    }
+}
+
+pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style) -> String {
     let mut out = String::new();
 
-    let agents: Vec<&Placed> = state.project_agents().collect();
+    let agents: Vec<&AgentNode> = graph
+        .modules
+        .iter()
+        .flat_map(|m| m.issues.iter().flat_map(|i| &i.agents).chain(&m.agents))
+        .chain(graph.unplaced_issues.iter().flat_map(|i| &i.agents))
+        .chain(&graph.unlinked_agents)
+        .collect();
     let working = agents
         .iter()
-        .filter(|p| p.agent.agent_status == "working")
+        .filter(|a| a.agent.agent_status == "working")
         .count();
     let _ = write!(
         out,
         "{} · {} agent{} ({working} working)",
-        style.paint("1", &map.name),
+        style.bold(&map.name),
         agents.len(),
         if agents.len() == 1 { "" } else { "s" },
     );
-    if state.elsewhere > 0 {
-        let _ = write!(
-            out,
-            " · {}",
-            style.paint("2", &format!("{} elsewhere", state.elsewhere))
-        );
+    if graph.elsewhere > 0 {
+        out.push_str(&style.dim(&format!(" · {} elsewhere", graph.elsewhere)));
     }
     out.push_str("\n\n");
 
-    let root_label = "(project root)";
-    let width = map
-        .nodes
-        .iter()
-        .map(|n| n.label.chars().count())
-        .chain([root_label.len()])
-        .max()
-        .unwrap_or(0);
-
-    let rows = map
-        .nodes
-        .iter()
-        .map(|n| n.label.as_str())
-        .zip(&state.by_node)
-        .chain((!state.unattributed.is_empty()).then_some((root_label, &state.unattributed)));
-
-    for (label, placed) in rows {
-        let dot = match node_status(placed) {
-            Some(s) => style.paint(status_code(s), status_dot(s)),
-            None => style.paint("2", "·"),
-        };
-        let padded = format!("{label:<width$}");
-        let label = if placed.is_empty() {
-            style.paint("2", &padded)
+    for (module, node) in map.modules.iter().zip(&graph.modules) {
+        let status = busiest(
+            node.issues
+                .iter()
+                .flat_map(|i| &i.agents)
+                .chain(&node.agents),
+        );
+        let empty = node.issues.is_empty() && node.agents.is_empty();
+        let label = if empty {
+            style.dim(&module.label)
         } else {
-            style.paint("1", &padded)
+            style.bold(&module.label)
         };
-        let _ = write!(out, " {dot} {label}  ");
-
-        if placed.is_empty() {
-            out.push_str(&style.paint("2", "—"));
-            out.push('\n');
+        let _ = write!(out, " {} {label}", dot(status, style));
+        if empty {
+            out.push_str(&style.dim("  —"));
         }
-        for (i, p) in placed.iter().enumerate() {
-            if i > 0 {
-                let _ = write!(out, "{:width$}     ", "");
-            }
-            out.push_str(&agent_chip(p, style));
-            out.push('\n');
+        out.push('\n');
+        render_issues(&mut out, &node.issues, map, style);
+        for a in &node.agents {
+            let _ = writeln!(
+                out,
+                "{INDENT}{} {}",
+                agent_chip(a, style),
+                style.dim("(no issue)")
+            );
+        }
+    }
+
+    if !graph.unplaced_issues.is_empty() {
+        let _ = writeln!(
+            out,
+            "\n {} {}",
+            style.dim("?"),
+            style.bold("Not placed in a module")
+        );
+        render_issues(&mut out, &graph.unplaced_issues, map, style);
+    }
+    if !graph.unlinked_agents.is_empty() {
+        let _ = writeln!(
+            out,
+            "\n {} {}",
+            style.dim("?"),
+            style.bold("No issue, no changes")
+        );
+        for a in &graph.unlinked_agents {
+            let _ = writeln!(out, "{INDENT}{}", agent_chip(a, style));
         }
     }
 
     if !map.edges.is_empty() {
-        let _ = writeln!(out, "\n {}", style.paint("2", "edges"));
-        // Edge endpoints are validated against node ids when the map loads.
-        let label_of = |id: &str| -> &str {
-            map.nodes
+        let _ = writeln!(out, "\n {}", style.dim("depends on"));
+        // Edge endpoints are validated against module ids when the map loads.
+        let label = |id: &str| -> &str {
+            map.modules
                 .iter()
-                .find(|n| n.id == id)
-                .map_or("?", |n| n.label.as_str())
+                .find(|m| m.id == id)
+                .map_or("?", |m| m.label.as_str())
         };
         for e in &map.edges {
-            let _ = writeln!(out, "   {} ─▶ {}", label_of(&e.from), label_of(&e.to));
+            let _ = writeln!(out, "   {} ─▶ {}", label(&e.from), label(&e.to));
         }
+    }
+
+    for w in warnings {
+        let _ = writeln!(out, "\n {}", style.paint("31", &format!("! {w}")));
     }
 
     out
