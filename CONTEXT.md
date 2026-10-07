@@ -5,15 +5,15 @@ A terminal view of which GitHub issue each herdr agent is working on, and which 
 ## Language
 
 **Module**:
-A stable part of the project (MCP server, Search, Ingest…), declared in the module map as an id, a label and path globs (tests included).
+A stable part of the project (MCP server, Search, Ingest…), declared in the module map as an id, a label, a short description and path globs (tests included). The description is what the classifier reads.
 _Avoid_: feature (the v0 name; "feature" now means what an issue builds)
 
 **Module map**:
-The `.agentgraph.toml` file: `[project]` (name, root, `ignore` globs), `[[module]]` entries, and `[[edge]]` dependencies between modules.
+The `.agentgraph.toml` file: `[project]` (name, root, `min_confidence`), `[[module]]` entries, and `[[edge]]` dependencies between modules.
 _Avoid_: feature map
 
 **Issue**:
-An open GitHub issue: the feature or fix being built. Sub-issues are grouped under their parent.
+An open GitHub issue that a live agent is working on: the feature or fix being built. Issues with no agent are not shown. Sub-issues are grouped under their parent.
 _Avoid_: task, ticket
 
 **Agent**:
@@ -21,26 +21,27 @@ A coding agent running in a herdr pane, with a status (working / idle / blocked)
 _Avoid_: worker, session
 
 **World**:
-The facts collected in one tick: module map, agents, per-agent git facts, GitHub issues and PRs. All I/O happens in collectors that build it; the graph is a pure function of it.
+The facts collected in one tick: module map, agents, per-agent branches, GitHub issues and PRs, and classifications. All I/O happens in collectors that build it; the graph is a pure function of it.
 _Avoid_: state, snapshot (a herdr snapshot is only one input)
 
 **Graph**:
-Modules → issues → agents, plus unplaced issues, unlinked agents and elsewhere agents.
+Modules → issues → agents, plus unplaced issues, agents with no issue, and elsewhere agents.
 
 **Link**:
-An edge with a target, a source and a confidence (1.0 for every v1 source). Sources: `branch-number`, `title-match`, `pr`, `label`, `diff`.
+An edge with a target, a source and a confidence. Sources: `branch-number`, `title-match`, `pr` (confidence 1.0) and `classifier` (the classifier's probability).
 
 **Agent → issue link**:
-From the agent's branch (never the default branch), first match wins: issue number in the branch name, then branch name as the start of an open issue's title in branch form, then an open PR from that branch closing an issue.
+From the agent's branch (never the default branch), first match wins: issue number in the branch name, then branch name as the start of an open issue's title in branch form, then an open PR from that branch closing an issue. No match means the agent has no issue; nothing guesses.
 
 **Issue → module link**:
-First match wins: `module:<id>` labels, then the files the issue's branches changed against the default branch (working tree included, `ignore` globs skipped), weighted by lines changed. The heaviest module places the issue; others are "also".
+Decided by the classifier alone, from the issue's title and body and the module map; GitHub labels and diffs are never used. The module with the highest probability places the issue if it reaches `min_confidence`. One module per issue.
 
-**Unclaimed**:
-An open `ready-for-agent` issue with no agent.
+**Classifier**:
+Jev (`typesafe/jev-1.13`, TypeSafe's structured decision model, called through OpenRouter). It answers one yes/no question per module and returns a calibrated probability for each. Results are cached on disk until the issue, the module descriptions or the model change.
+_Avoid_: LLM (Jev returns no text)
 
 **Unplaced**:
-An issue no source could tie to a module.
+An issue whose best module is below `min_confidence`, or that has no classification yet (for example, offline with nothing cached). Shown with its best guess when there is one.
 
 **Elsewhere**:
 An agent whose cwd is outside the project's git common directory. Worktrees outside the repo folder that share it are in the project.

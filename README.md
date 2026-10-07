@@ -88,7 +88,8 @@ It runs the same checks as CI: `cargo fmt --check`, `cargo clippy --all-targets 
 
 ## Roadmap
 
-- **v2:** a classifier interface (Jev / LLM) for issue → module before code exists, and for agent → issue when the branch name says nothing; confidence shown in the graph; `agentgraph eval` replaying merged PRs as labelled data.
+- **v2** ([#4](https://github.com/javier-abia/agentgraph/issues/4)): Jev places each live agent's issue in a module from its title, body and module descriptions, so no GitHub labels are needed. Labels, unclaimed issues and placement by diff are removed. The probability is shown in the graph.
+- Later: several modules per issue, unclaimed issues without labels, a classifier for agent → issue, and `agentgraph eval` replaying merged PRs.
 - `agentgraph init`: an LLM agent proposes the first module map.
 - Transcript reading for files an agent has read but not changed.
 - An interactive ratatui view (Enter → `agent.focus`), the herdr socket and `events.subscribe`, packaging as a herdr plugin.
