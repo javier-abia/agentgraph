@@ -42,7 +42,7 @@ Needs `herdr`, `git`, an authenticated `gh` (the `repo` permission is enough), `
 export OPENROUTER_API_KEY=sk-or-...
 ```
 
-Without the key, or when OpenRouter can't be reached, the view still renders: an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, cached classifications are still used, and issues with nothing cached are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
+Without the key, or when OpenRouter can't be reached, the view still renders: when some agent's issue needs classifying, an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, cached classifications are still used, and issues with nothing cached are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
 
 ## Module map
 
