@@ -74,27 +74,46 @@ pub struct Graph {
     pub elsewhere: usize,
 }
 
-pub fn build(world: &World) -> Graph {
-    let map = &world.map;
-    let mut graph = Graph {
-        modules: (0..map.modules.len())
-            .map(|_| ModuleNode::default())
-            .collect(),
-        ..Default::default()
-    };
+/// The live agents sorted by what they are on: an issue, no issue, or
+/// another project.
+#[derive(Default)]
+struct LinkedAgents {
+    by_issue: BTreeMap<u64, Vec<AgentNode>>,
+    no_issue: Vec<AgentNode>,
+    elsewhere: usize,
+}
 
-    let mut by_issue: BTreeMap<u64, Vec<AgentNode>> = BTreeMap::new();
+fn link_agents(world: &World) -> LinkedAgents {
+    let mut linked = LinkedAgents::default();
     for facts in &world.agents {
         if !in_project(world, facts) {
-            graph.elsewhere += 1;
+            linked.elsewhere += 1;
             continue;
         }
         let node = agent_node(world, facts);
         match &node.issue {
-            Some(link) => by_issue.entry(link.target).or_default().push(node),
-            None => graph.no_issue_agents.push(node),
+            Some(link) => linked.by_issue.entry(link.target).or_default().push(node),
+            None => linked.no_issue.push(node),
         }
     }
+    linked
+}
+
+pub fn build(world: &World) -> Graph {
+    let map = &world.map;
+    let LinkedAgents {
+        mut by_issue,
+        no_issue,
+        elsewhere,
+    } = link_agents(world);
+    let mut graph = Graph {
+        modules: (0..map.modules.len())
+            .map(|_| ModuleNode::default())
+            .collect(),
+        no_issue_agents: no_issue,
+        elsewhere,
+        ..Default::default()
+    };
 
     // Only issues a live agent is on are shown.
     for issue in &world.issues {
@@ -126,17 +145,11 @@ pub fn build(world: &World) -> Graph {
 /// The issues to classify this tick: those a live project agent is on.
 /// Same linking as `build`, so these are exactly the issues it shows.
 pub fn issues_to_classify(world: &World) -> Vec<&Issue> {
-    let linked: Vec<u64> = world
-        .agents
-        .iter()
-        .filter(|facts| in_project(world, facts))
-        .filter_map(|facts| agent_node(world, facts).issue)
-        .map(|link| link.target)
-        .collect();
+    let by_issue = link_agents(world).by_issue;
     world
         .issues
         .iter()
-        .filter(|i| linked.contains(&i.number))
+        .filter(|i| by_issue.contains_key(&i.number))
         .collect()
 }
 
