@@ -1,6 +1,7 @@
 //! A world snapshot: everything the collectors gathered in one tick, as plain
 //! data. The graph is a pure function of this, which is the test seam.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::herdr::Agent;
@@ -14,7 +15,15 @@ pub struct World {
     pub agents: Vec<AgentFacts>,
     pub issues: Vec<Issue>,
     pub prs: Vec<PullRequest>,
+    /// Issue number → its classification. Issues not classified yet (or not
+    /// cached, when offline) are absent.
+    pub classifications: BTreeMap<u64, Classification>,
 }
+
+/// The classifier's answer for one issue: module id → probability (0..=1)
+/// that the issue belongs to that module. Each probability is independent;
+/// they need not sum to 1.
+pub type Classification = BTreeMap<String, f32>;
 
 pub struct AgentFacts {
     pub agent: Agent,

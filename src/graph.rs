@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 
 use crate::herdr::Agent;
-use crate::world::{AgentFacts, Issue, IssueRef, PullRequest, World};
+use crate::modulemap::ModuleMap;
+use crate::world::{AgentFacts, Classification, Issue, IssueRef, PullRequest, World};
 
 /// Where a link came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,6 +13,8 @@ pub enum LinkSource {
     BranchNumber,
     TitleMatch,
     PullRequest,
+    /// Issue → module, from the classifier; confidence is its probability.
+    Classifier,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +49,10 @@ pub struct IssueNode {
     pub number: u64,
     pub title: String,
     pub parent: Option<IssueRef>,
+    /// The issue's most likely module (an index into `ModuleMap::modules`).
+    /// For a placed issue it is the module it sits under; for an unplaced one
+    /// it is the best guess, below `min_confidence`. None when unclassified.
+    pub module: Option<Link<usize>>,
     /// Never empty: only issues a live agent is on are shown.
     pub agents: Vec<AgentNode>,
 }
@@ -82,40 +89,94 @@ pub fn build(world: &World) -> Graph {
             graph.elsewhere += 1;
             continue;
         }
-        let repo = facts.repo.as_ref();
-        let node = AgentNode {
-            agent: facts.agent.clone(),
-            branch: repo.and_then(|r| r.branch.clone()),
-            worktree: repo
-                .filter(|r| r.toplevel != map.root)
-                .and_then(|r| r.toplevel.file_name())
-                .map(|n| n.to_string_lossy().into_owned()),
-            issue: repo
-                .filter(|r| !r.on_default_branch)
-                .and_then(|r| r.branch.as_deref())
-                .and_then(|b| issue_for_branch(b, &world.issues, &world.prs)),
-        };
+        let node = agent_node(world, facts);
         match &node.issue {
             Some(link) => by_issue.entry(link.target).or_default().push(node),
             None => graph.no_issue_agents.push(node),
         }
     }
 
-    // Only issues a live agent is on are shown. Nothing places them in a
-    // module yet: the classifier will.
+    // Only issues a live agent is on are shown.
     for issue in &world.issues {
         let Some(agents) = by_issue.remove(&issue.number) else {
             continue;
         };
-        graph.unplaced_issues.push(IssueNode {
+        let module = world
+            .classifications
+            .get(&issue.number)
+            .and_then(|c| best_module(map, c));
+        let node = IssueNode {
             number: issue.number,
             title: issue.title.clone(),
             parent: issue.parent.clone(),
+            module,
             agents,
-        });
+        };
+        match &node.module {
+            Some(link) if link.confidence >= map.min_confidence => {
+                graph.modules[link.target].issues.push(node);
+            }
+            _ => graph.unplaced_issues.push(node),
+        }
     }
 
     graph
+}
+
+/// The issues to classify this tick: those a live project agent is on.
+/// Same linking as `build`, so these are exactly the issues it shows.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "called by the Jev collector (#8)")
+)]
+pub fn issues_to_classify(world: &World) -> Vec<&Issue> {
+    let linked: Vec<u64> = world
+        .agents
+        .iter()
+        .filter(|facts| in_project(world, facts))
+        .filter_map(|facts| agent_node(world, facts).issue)
+        .map(|link| link.target)
+        .collect();
+    world
+        .issues
+        .iter()
+        .filter(|i| linked.contains(&i.number))
+        .collect()
+}
+
+fn agent_node(world: &World, facts: &AgentFacts) -> AgentNode {
+    let repo = facts.repo.as_ref();
+    AgentNode {
+        agent: facts.agent.clone(),
+        branch: repo.and_then(|r| r.branch.clone()),
+        worktree: repo
+            .filter(|r| r.toplevel != world.map.root)
+            .and_then(|r| r.toplevel.file_name())
+            .map(|n| n.to_string_lossy().into_owned()),
+        issue: repo
+            .filter(|r| !r.on_default_branch)
+            .and_then(|r| r.branch.as_deref())
+            .and_then(|b| issue_for_branch(b, &world.issues, &world.prs)),
+    }
+}
+
+/// issue → module: the map's module with the highest probability, first in
+/// map order on a tie. Probabilities for modules not in the map are ignored.
+fn best_module(map: &ModuleMap, classification: &Classification) -> Option<Link<usize>> {
+    let mut best: Option<Link<usize>> = None;
+    for (i, module) in map.modules.iter().enumerate() {
+        let Some(&p) = classification.get(&module.id) else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|b| p > b.confidence) {
+            best = Some(Link {
+                target: i,
+                source: LinkSource::Classifier,
+                confidence: p,
+            });
+        }
+    }
+    best
 }
 
 fn in_project(world: &World, facts: &AgentFacts) -> bool {
@@ -182,7 +243,6 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
-    use crate::modulemap::ModuleMap;
     use crate::world::RepoFacts;
 
     // Modelled on urbandocs.
@@ -239,7 +299,31 @@ mod tests {
             agents,
             issues,
             prs,
+            classifications: BTreeMap::new(),
         }
+    }
+
+    /// A classification from (module id, probability) pairs.
+    fn classified(probabilities: &[(&str, f32)]) -> Classification {
+        probabilities
+            .iter()
+            .map(|&(id, p)| (id.to_string(), p))
+            .collect()
+    }
+
+    /// One agent on issue 102, classified as given.
+    fn classified_world(probabilities: &[(&str, f32)]) -> World {
+        let mut w = world(
+            vec![on_branch("p1", "/home/u/urbandocs", "search-floor-102")],
+            vec![issue(102, "Floor search results at score >= 2")],
+            vec![],
+        );
+        w.classifications.insert(102, classified(probabilities));
+        w
+    }
+
+    fn module_issues(g: &Graph) -> Vec<Vec<u64>> {
+        g.modules.iter().map(|m| numbers(&m.issues)).collect()
     }
 
     fn panes(agents: &[AgentNode]) -> Vec<&str> {
@@ -271,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_only_issues_a_live_agent_is_on_and_leaves_them_unplaced() {
+    fn shows_only_issues_a_live_agent_is_on() {
         let g = build(&world(
             vec![on_branch(
                 "p1",
@@ -287,7 +371,7 @@ mod tests {
         assert_eq!(numbers(&g.unplaced_issues), [102]);
         assert!(
             g.modules.iter().all(|m| m.issues.is_empty()),
-            "nothing places issues in a module until the classifier does"
+            "an unclassified issue is not placed in a module"
         );
     }
 
@@ -355,6 +439,83 @@ mod tests {
         };
         let g = build(&world(vec![other, no_repo], vec![], vec![]));
         assert_eq!(g.elsewhere, 2);
+    }
+
+    #[test]
+    fn places_issue_in_its_best_module_at_exactly_min_confidence() {
+        let g = build(&classified_world(&[("server", 0.2), ("search", 0.5)]));
+        assert_eq!(module_issues(&g), [vec![], vec![102]]);
+        assert!(g.unplaced_issues.is_empty());
+        let link = g.modules[1].issues[0].module.as_ref().unwrap();
+        assert_eq!(link.target, 1);
+        assert_eq!(link.source, LinkSource::Classifier);
+        assert_eq!(link.confidence, 0.5);
+    }
+
+    #[test]
+    fn places_issue_in_its_best_module_above_min_confidence() {
+        let g = build(&classified_world(&[("server", 0.9), ("search", 0.6)]));
+        assert_eq!(module_issues(&g), [vec![102], vec![]]);
+        let link = g.modules[0].issues[0].module.as_ref().unwrap();
+        assert_eq!((link.target, link.confidence), (0, 0.9));
+    }
+
+    #[test]
+    fn leaves_issue_below_min_confidence_unplaced_with_its_best_guess() {
+        let g = build(&classified_world(&[("server", 0.1), ("search", 0.49)]));
+        assert!(g.modules.iter().all(|m| m.issues.is_empty()));
+        assert_eq!(numbers(&g.unplaced_issues), [102]);
+        let guess = g.unplaced_issues[0].module.as_ref().unwrap();
+        assert_eq!(
+            (guess.target, guess.source, guess.confidence),
+            (1, LinkSource::Classifier, 0.49)
+        );
+    }
+
+    #[test]
+    fn leaves_unclassified_issue_unplaced_with_no_guess() {
+        let g = build(&world(
+            vec![on_branch("p1", "/home/u/urbandocs", "search-floor-102")],
+            vec![issue(102, "Floor search results at score >= 2")],
+            vec![],
+        ));
+        assert_eq!(numbers(&g.unplaced_issues), [102]);
+        assert_eq!(g.unplaced_issues[0].module, None);
+    }
+
+    #[test]
+    fn honours_the_maps_min_confidence() {
+        let mut w = classified_world(&[("search", 0.6)]);
+        w.map.min_confidence = 0.7;
+        let g = build(&w);
+        assert_eq!(numbers(&g.unplaced_issues), [102]);
+    }
+
+    #[test]
+    fn ignores_probabilities_for_modules_not_in_the_map() {
+        let g = build(&classified_world(&[("gone", 0.99), ("search", 0.3)]));
+        let guess = g.unplaced_issues[0].module.as_ref().unwrap();
+        assert_eq!((guess.target, guess.confidence), (1, 0.3));
+    }
+
+    #[test]
+    fn issues_to_classify_are_only_those_live_project_agents_are_on() {
+        let mut elsewhere = on_branch("p2", "/home/u/fintrack", "feat-63");
+        elsewhere.repo.as_mut().unwrap().git_dir = PathBuf::from("/home/u/fintrack/.git");
+        let w = world(
+            vec![
+                on_branch("p1", "/home/u/urbandocs", "search-floor-102"),
+                elsewhere,
+            ],
+            vec![
+                issue(102, "Floor search results at score >= 2"),
+                issue(63, "Render the fidelity disclosure"),
+                issue(7, "No agent on this one"),
+            ],
+            vec![],
+        );
+        let wanted: Vec<u64> = issues_to_classify(&w).iter().map(|i| i.number).collect();
+        assert_eq!(wanted, [102]);
     }
 
     #[test]

@@ -92,6 +92,7 @@ fn main() -> Result<()> {
         agents: Vec::new(),
         issues: Vec::new(),
         prs: Vec::new(),
+        classifications: Default::default(),
     };
 
     loop {

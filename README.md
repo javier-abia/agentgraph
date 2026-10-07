@@ -44,10 +44,12 @@ Needs `herdr`, `git`, and an authenticated `gh` (the `repo` permission is enough
 [project]
 name = "urbandocs"
 root = "~/Projects/Ayuntamiento/urbandocs"  # optional; defaults to the map's directory
+min_confidence = 0.5  # optional; the probability an issue's best module needs to place it
 
 [[module]]
 id = "search"
 label = "Search & read"
+description = "Query parsing, ranking, and resolving and reading cited documents."  # what the classifier reads
 paths = ["src/urbandocs/search.py", "tests/unit/test_search.py"]  # include the module's tests
 
 [[edge]]
@@ -70,11 +72,11 @@ Globs are relative to the root and work like `.gitignore`: `*` stays within one 
 
 No match means the agent is listed under "No issue"; nothing guesses.
 
-**Issue → module.** No GitHub labels and no diffs are read. The v2 classifier will place each issue from its title and body ([#4](https://github.com/javier-abia/agentgraph/issues/4)); until it lands, every shown issue is under "Not placed in a module".
+**Issue → module.** No GitHub labels and no diffs are read. A classifier gives each issue a probability per module, from its title and body and the module descriptions (falling back to the path globs). The issue goes under its most likely module when that probability reaches `min_confidence`, shown dimmed after the title. Otherwise it goes under "Not placed in a module" with `(best guess: <module> <p>)`. An issue with no classification is unplaced with no guess. The live classifier (Jev) is not wired in yet ([#8](https://github.com/javier-abia/agentgraph/issues/8)), so for now every shown issue is unplaced.
 
 **What's shown.** Only live agents and the issues they are on. Issues with no agent are not shown. Sub-issues are grouped under their parent.
 
-Every link records its source and a confidence value (1.0 for the agent → issue sources).
+Every link records its source and a confidence value: 1.0 for the agent → issue sources, the classifier's probability for issue → module.
 
 ## Development
 

@@ -88,7 +88,21 @@ fn agent_chip(a: &AgentNode, style: &Style) -> String {
 
 const INDENT: &str = "     ";
 
-fn render_issues(out: &mut String, issues: &[IssueNode], style: &Style) {
+/// What follows an issue's title: its probability when placed, its best
+/// guess when not.
+#[derive(Clone, Copy)]
+enum Section {
+    Module,
+    Unplaced,
+}
+
+fn render_issues(
+    out: &mut String,
+    map: &ModuleMap,
+    issues: &[IssueNode],
+    section: Section,
+    style: &Style,
+) {
     // Top-level issues first, then sub-issues grouped under their parent.
     let mut order: Vec<&IssueNode> = issues.iter().collect();
     order.sort_by_key(|i| (i.parent.as_ref().map(|p| p.number), i.number));
@@ -114,6 +128,16 @@ fn render_issues(out: &mut String, issues: &[IssueNode], style: &Style) {
             style.bold(&format!("#{}", issue.number)),
             issue.title
         );
+        if let Some(link) = &issue.module {
+            let note = match section {
+                Section::Module => format!(" {:.2}", link.confidence),
+                Section::Unplaced => format!(
+                    " (best guess: {} {:.2})",
+                    map.modules[link.target].label, link.confidence
+                ),
+            };
+            out.push_str(&style.dim(&note));
+        }
         out.push('\n');
 
         for a in &issue.agents {
@@ -161,7 +185,7 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
             out.push_str(&style.dim("  —"));
         }
         out.push('\n');
-        render_issues(&mut out, &node.issues, style);
+        render_issues(&mut out, map, &node.issues, Section::Module, style);
     }
 
     if !graph.unplaced_issues.is_empty() {
@@ -171,7 +195,13 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
             style.dim("?"),
             style.bold("Not placed in a module")
         );
-        render_issues(&mut out, &graph.unplaced_issues, style);
+        render_issues(
+            &mut out,
+            map,
+            &graph.unplaced_issues,
+            Section::Unplaced,
+            style,
+        );
     }
     if !graph.no_issue_agents.is_empty() {
         let _ = writeln!(out, "\n {} {}", style.dim("?"), style.bold("No issue"));
@@ -204,6 +234,7 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{Link, ModuleNode};
     use crate::herdr::Agent;
     use std::path::PathBuf;
 
@@ -244,6 +275,57 @@ mod tests {
         let out = render(&map, &graph, &[], &Style { color: false });
         assert!(out.contains("? No issue\n"), "{out}");
         assert!(out.contains("⎇ main"), "{out}");
+    }
+
+    fn issue_node(number: u64, title: &str, module: Option<(usize, f32)>) -> IssueNode {
+        IssueNode {
+            number,
+            title: title.into(),
+            parent: None,
+            module: module.map(|(target, confidence)| Link {
+                target,
+                source: LinkSource::Classifier,
+                confidence,
+            }),
+            agents: vec![node(Some("b"), None)],
+        }
+    }
+
+    const TWO_MODULES: &str = "[[module]]\nid = \"server\"\nlabel = \"MCP server\"\n[[module]]\nid = \"search\"\nlabel = \"Search\"\n";
+
+    #[test]
+    fn shows_the_probability_after_a_placed_issue() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![
+                Default::default(),
+                ModuleNode {
+                    issues: vec![issue_node(102, "Floor scores", Some((1, 0.82)))],
+                },
+            ],
+            ..Default::default()
+        };
+        let out = render(&map, &graph, &[], &Style { color: false });
+        assert!(out.contains("#102 Floor scores 0.82\n"), "{out}");
+    }
+
+    #[test]
+    fn shows_the_best_guess_after_an_unplaced_issue_and_nothing_without_one() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default(), Default::default()],
+            unplaced_issues: vec![
+                issue_node(102, "Floor scores", Some((1, 0.42))),
+                issue_node(103, "Unclassified", None),
+            ],
+            ..Default::default()
+        };
+        let out = render(&map, &graph, &[], &Style { color: false });
+        assert!(
+            out.contains("#102 Floor scores (best guess: Search 0.42)\n"),
+            "{out}"
+        );
+        assert!(out.contains("#103 Unclassified\n"), "{out}");
     }
 
     #[test]
