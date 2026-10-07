@@ -1,3 +1,4 @@
+mod cache;
 mod git;
 mod github;
 mod graph;
@@ -7,16 +8,18 @@ mod modulemap;
 mod render;
 mod world;
 
+use std::collections::BTreeMap;
 use std::io::{IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
 
+use cache::Cache;
 use github::GitHub;
 use modulemap::ModuleMap;
-use world::{AgentFacts, World};
+use world::{AgentFacts, Classification, World};
 
 /// Shows which modules and GitHub issues your herdr-managed agents are working on.
 #[derive(Parser)]
@@ -96,6 +99,9 @@ fn main() -> Result<()> {
         classifications: Default::default(),
     };
 
+    let cache_path = cache::path(&world.map.name);
+    let mut cache = cache_path.as_deref().map(Cache::load).unwrap_or_default();
+
     loop {
         world.agents = herdr::fetch_agents(args.snapshot.as_deref())?
             .into_iter()
@@ -113,10 +119,7 @@ fn main() -> Result<()> {
             }
         }
 
-        let (classifications, jev_error) =
-            jev::classify(&graph::issues_to_classify(&world), &world.map.modules);
-        world.classifications = classifications;
-        errors.extend(jev_error);
+        world.classifications = classify(&world, &mut cache, cache_path.as_deref(), &mut errors);
 
         let graph = graph::build(&world);
         let frame = render::render(&world.map, &graph, &errors, &style);
@@ -134,4 +137,45 @@ fn main() -> Result<()> {
         }
         std::thread::sleep(Duration::from_secs_f64(args.interval));
     }
+}
+
+/// Classifies the issues live agents are on: cached classifications first,
+/// Jev only for the misses, and the fresh results saved for the next tick.
+fn classify(
+    world: &World,
+    cache: &mut Cache,
+    cache_path: Option<&Path>,
+    errors: &mut Vec<String>,
+) -> BTreeMap<u64, Classification> {
+    let modules = &world.map.modules;
+    let mut classifications = BTreeMap::new();
+    let mut misses = Vec::new();
+    for issue in graph::issues_to_classify(world) {
+        let key = cache::key(issue, modules, jev::MODEL);
+        match cache.get(issue.number, &key) {
+            Some(c) => {
+                classifications.insert(issue.number, c.clone());
+            }
+            None => misses.push((issue, key)),
+        }
+    }
+
+    let issues: Vec<_> = misses.iter().map(|(issue, _)| *issue).collect();
+    let (fresh, jev_error) = jev::classify(&issues, modules);
+    errors.extend(jev_error);
+    if fresh.is_empty() {
+        return classifications;
+    }
+    for (issue, key) in misses {
+        if let Some(c) = fresh.get(&issue.number) {
+            cache.insert(issue.number, key, c.clone());
+        }
+    }
+    if let Some(path) = cache_path
+        && let Err(e) = cache.save(path)
+    {
+        errors.push(format!("classification cache not saved: {e:#}"));
+    }
+    classifications.extend(fresh);
+    classifications
 }

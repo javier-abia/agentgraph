@@ -42,7 +42,7 @@ Needs `herdr`, `git`, an authenticated `gh` (the `repo` permission is enough), `
 export OPENROUTER_API_KEY=sk-or-...
 ```
 
-Without the key, or when OpenRouter can't be reached, the view still renders: an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, and unclassified issues are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
+Without the key, or when OpenRouter can't be reached, the view still renders: an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, cached classifications are still used, and issues with nothing cached are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
 
 ## Module map
 
@@ -78,7 +78,9 @@ Globs are relative to the root and work like `.gitignore`: `*` stays within one 
 
 No match means the agent is listed under "No issue"; nothing guesses.
 
-**Issue → module.** No GitHub labels and no diffs are read. [Jev](https://openrouter.ai/docs/guides/community/jev) (`typesafe/jev-1.13` via OpenRouter) gets the issue's title and body (truncated to about 4k tokens) and one yes/no question per module, built from the module's `label` and `description`, or its `label` and `paths` when there is no description. Its probability of "yes" for each module is independent of the others. The issue goes under its most likely module when that probability reaches `min_confidence`, shown dimmed after the title. Otherwise it goes under "Not placed in a module" with `(best guess: <module> <p>)`. An issue with no classification (no key, or the request failed) is unplaced with no guess. Each issue is classified on every tick for now; a cache comes next ([#9](https://github.com/javier-abia/agentgraph/issues/9)).
+**Issue → module.** No GitHub labels and no diffs are read. [Jev](https://openrouter.ai/docs/guides/community/jev) (`typesafe/jev-1.13` via OpenRouter) gets the issue's title and body (truncated to about 4k tokens) and one yes/no question per module, built from the module's `label` and `description`, or its `label` and `paths` when there is no description. Its probability of "yes" for each module is independent of the others. The issue goes under its most likely module when that probability reaches `min_confidence`, shown dimmed after the title. Otherwise it goes under "Not placed in a module" with `(best guess: <module> <p>)`. An issue with no classification (no key, or the request failed, with nothing cached) is unplaced with no guess.
+
+**Classification cache.** Classifications are saved in `~/.cache/agentgraph/<project>.json` (`$XDG_CACHE_HOME/agentgraph/` when that is set) and reused until the issue is edited (its `updatedAt` changes), a module's id, `label` or `description` changes, a module is added or removed, or the model changes. Editing `paths` does not reclassify, even for a module without a description. So Jev is called only for new or changed issues, and probabilities stay put between ticks. A corrupt or unreadable cache file counts as empty and is replaced on the next successful classification; delete it to reclassify everything.
 
 **What's shown.** Only live agents and the issues they are on. Issues with no agent are not shown. Sub-issues are grouped under their parent.
 
