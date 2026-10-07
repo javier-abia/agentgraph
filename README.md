@@ -36,7 +36,13 @@ cargo run -- --map examples/urbandocs.agentgraph.toml --watch  # redraw every 2s
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
 
-Needs `herdr`, `git`, and an authenticated `gh` (the `repo` permission is enough).
+Needs `herdr`, `git`, an authenticated `gh` (the `repo` permission is enough), `curl` 8.3 or later, and `OPENROUTER_API_KEY` set to an [OpenRouter](https://openrouter.ai) key for the issue classifier.
+
+```sh
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+Without the key, or when OpenRouter can't be reached, the view still renders: an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, and unclassified issues are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
 
 ## Module map
 
@@ -49,7 +55,7 @@ min_confidence = 0.5  # optional; the probability an issue's best module needs t
 [[module]]
 id = "search"
 label = "Search & read"
-description = "Query parsing, ranking, and resolving and reading cited documents."  # what the classifier reads
+description = "Query parsing, ranking, and resolving and reading cited documents."  # optional but recommended; what the classifier reads
 paths = ["src/urbandocs/search.py", "tests/unit/test_search.py"]  # include the module's tests
 
 [[edge]]
@@ -72,7 +78,7 @@ Globs are relative to the root and work like `.gitignore`: `*` stays within one 
 
 No match means the agent is listed under "No issue"; nothing guesses.
 
-**Issue → module.** No GitHub labels and no diffs are read. A classifier gives each issue a probability per module, from its title and body and the module descriptions (falling back to the path globs). The issue goes under its most likely module when that probability reaches `min_confidence`, shown dimmed after the title. Otherwise it goes under "Not placed in a module" with `(best guess: <module> <p>)`. An issue with no classification is unplaced with no guess. The live classifier (Jev) is not wired in yet ([#8](https://github.com/javier-abia/agentgraph/issues/8)), so for now every shown issue is unplaced.
+**Issue → module.** No GitHub labels and no diffs are read. [Jev](https://openrouter.ai/docs/guides/community/jev) (`typesafe/jev-1.13` via OpenRouter) gets the issue's title and body (truncated to about 4k tokens) and one yes/no question per module, built from the module's `label` and `description`, or its `label` and `paths` when there is no description. Its probability of "yes" for each module is independent of the others. The issue goes under its most likely module when that probability reaches `min_confidence`, shown dimmed after the title. Otherwise it goes under "Not placed in a module" with `(best guess: <module> <p>)`. An issue with no classification (no key, or the request failed) is unplaced with no guess. Each issue is classified on every tick for now; a cache comes next ([#9](https://github.com/javier-abia/agentgraph/issues/9)).
 
 **What's shown.** Only live agents and the issues they are on. Issues with no agent are not shown. Sub-issues are grouped under their parent.
 

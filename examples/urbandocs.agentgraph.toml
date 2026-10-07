@@ -10,11 +10,13 @@ root = "~/Projects/Ayuntamiento/urbandocs"
 [[module]]
 id = "server"
 label = "MCP server"
+description = "The MCP transport adapter: exposes search, get, get_by_cite and get_page as tools over streamable HTTP, with no retrieval logic of its own."
 paths = ["src/urbandocs/server.py", "tests/unit/test_server.py"]
 
 [[module]]
 id = "search"
 label = "Search & read"
+description = "The retrieval operations: sweeping and ranking sections for search, resolving printed cites to addresses, and reading provision text, ancestors, children and pages."
 paths = [
   "src/urbandocs/search.py",
   "src/urbandocs/resolve.py",
@@ -29,6 +31,7 @@ paths = [
 [[module]]
 id = "substrate"
 label = "Substrate"
+description = "Loads corpus.tsv into memory once at startup and builds the indexes (by id, cite and page, children, ancestor chains) every operation runs over."
 paths = [
   "src/urbandocs/substrate.py",
   "src/urbandocs/paths.py",
@@ -39,6 +42,7 @@ paths = [
 [[module]]
 id = "ingest"
 label = "Ingest & corpus"
+description = "Turning the normativa PDFs into corpus.tsv: docling conversion, the ingest stage, corpus and structure checks, and the extraction fidelity of the documents."
 paths = [
   "src/urbandocs/ingest.py",
   "src/urbandocs/check_*.py",
@@ -52,16 +56,19 @@ paths = [
 [[module]]
 id = "scripts"
 label = "Scripts"
+description = "Frozen one-off scripts kept as evidence for past measurements; not maintained and not imported by anything."
 paths = ["scripts/**"]
 
 [[module]]
 id = "evals"
 label = "Evals"
+description = "The end-to-end eval harness: an agent answers the gold question set through the real MCP tools, a second model grades it, and runs are tracked in Langfuse."
 paths = ["evals/**"]
 
 [[module]]
 id = "research"
 label = "Research"
+description = "Written research notes: investigations, benchmarks and prototypes that inform design decisions, rather than code changes."
 paths = ["docs/research/**"]
 
 [[edge]]

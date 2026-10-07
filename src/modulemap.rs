@@ -51,16 +51,8 @@ pub struct Edge {
 pub struct Module {
     pub id: String,
     pub label: String,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read by the Jev collector (#8)")
-    )]
     /// What the module is about, in a sentence; what the classifier reads.
     pub description: Option<String>,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read by the Jev collector (#8)")
-    )]
     /// Path globs, validated at load. The classifier falls back to them when
     /// there is no description.
     pub paths: Vec<String>,

@@ -46,6 +46,11 @@ pub struct RepoFacts {
 pub struct Issue {
     pub number: u64,
     pub title: String,
+    /// Markdown body; the classifier reads it with the title.
+    pub body: String,
+    /// GitHub's `updatedAt` (RFC 3339), which changes when the issue is edited.
+    #[expect(dead_code, reason = "part of the classification cache key (#9)")]
+    pub updated_at: String,
     pub parent: Option<IssueRef>,
 }
 

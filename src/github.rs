@@ -14,7 +14,7 @@ const QUERY: &str = r#"
 query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     issues(states: OPEN, first: 100, orderBy: {field: UPDATED_AT, direction: DESC}) {
-      nodes { number title parent { number title } }
+      nodes { number title body updatedAt parent { number title } }
     }
     pullRequests(states: OPEN, first: 50) {
       nodes { headRefName closingIssuesReferences(first: 10) { nodes { number } } }
@@ -121,9 +121,12 @@ fn parse(json: &str) -> Result<GitHubData> {
         nodes: Vec<T>,
     }
     #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct RawIssue {
         number: u64,
         title: String,
+        body: String,
+        updated_at: String,
         parent: Option<RawRef>,
     }
     #[derive(Deserialize)]
@@ -154,6 +157,8 @@ fn parse(json: &str) -> Result<GitHubData> {
             .map(|i| Issue {
                 number: i.number,
                 title: i.title,
+                body: i.body,
+                updated_at: i.updated_at,
                 parent: i.parent.map(|p| IssueRef {
                     number: p.number,
                     title: p.title,

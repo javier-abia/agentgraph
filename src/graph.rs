@@ -125,10 +125,6 @@ pub fn build(world: &World) -> Graph {
 
 /// The issues to classify this tick: those a live project agent is on.
 /// Same linking as `build`, so these are exactly the issues it shows.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "called by the Jev collector (#8)")
-)]
 pub fn issues_to_classify(world: &World) -> Vec<&Issue> {
     let linked: Vec<u64> = world
         .agents
@@ -265,6 +261,8 @@ mod tests {
         Issue {
             number,
             title: title.into(),
+            body: String::new(),
+            updated_at: String::new(),
             parent: None,
         }
     }

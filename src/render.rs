@@ -146,8 +146,13 @@ fn render_issues(
     }
 }
 
-pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style) -> String {
+/// Draws one frame. `errors` (a source that failed this tick) go on top, one
+/// `✗` line each; the graph below is drawn from whatever data there is.
+pub fn render(map: &ModuleMap, graph: &Graph, errors: &[String], style: &Style) -> String {
     let mut out = String::new();
+    for e in errors {
+        let _ = writeln!(out, "{}", style.paint("31", &format!("✗ {e}")));
+    }
 
     let agents: Vec<&AgentNode> = graph
         .modules
@@ -222,10 +227,6 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
         for e in &map.edges {
             let _ = writeln!(out, "   {} ─▶ {}", label(&e.from), label(&e.to));
         }
-    }
-
-    for w in warnings {
-        let _ = writeln!(out, "\n {}", style.paint("31", &format!("! {w}")));
     }
 
     out
@@ -326,6 +327,20 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("#103 Unclassified\n"), "{out}");
+    }
+
+    #[test]
+    fn errors_go_on_top_and_the_graph_still_renders() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default(), Default::default()],
+            unplaced_issues: vec![issue_node(102, "Floor scores", None)],
+            ..Default::default()
+        };
+        let errors = ["OPENROUTER_API_KEY not set".to_string()];
+        let out = render(&map, &graph, &errors, &Style { color: false });
+        assert!(out.starts_with("✗ OPENROUTER_API_KEY not set\n"), "{out}");
+        assert!(out.contains("#102 Floor scores\n"), "{out}");
     }
 
     #[test]

@@ -2,6 +2,7 @@ mod git;
 mod github;
 mod graph;
 mod herdr;
+mod jev;
 mod modulemap;
 mod render;
 mod world;
@@ -103,17 +104,22 @@ fn main() -> Result<()> {
                 agent,
             })
             .collect();
-        let mut warnings = Vec::new();
+        let mut errors = Vec::new();
         if !args.no_github {
             let data = github.data();
             (world.issues, world.prs) = (data.issues, data.prs);
             if let Some(e) = &github.error {
-                warnings.push(format!("GitHub unavailable, showing cached issues: {e}"));
+                errors.push(format!("GitHub unavailable, showing cached issues: {e}"));
             }
         }
 
+        let (classifications, jev_error) =
+            jev::classify(&graph::issues_to_classify(&world), &world.map.modules);
+        world.classifications = classifications;
+        errors.extend(jev_error);
+
         let graph = graph::build(&world);
-        let frame = render::render(&world.map, &graph, &warnings, &style);
+        let frame = render::render(&world.map, &graph, &errors, &style);
 
         let mut stdout = std::io::stdout().lock();
         if args.watch {
