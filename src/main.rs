@@ -110,19 +110,20 @@ fn main() -> Result<()> {
                 agent,
             })
             .collect();
-        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
         if !args.no_github {
             let data = github.data();
             (world.issues, world.prs) = (data.issues, data.prs);
             if let Some(e) = &github.error {
-                errors.push(format!("GitHub unavailable, showing cached issues: {e}"));
+                warnings.push(format!("GitHub unavailable, showing cached issues: {e}"));
             }
         }
 
+        let mut errors = Vec::new();
         world.classifications = classify(&world, &mut cache, cache_path.as_deref(), &mut errors);
 
         let graph = graph::build(&world);
-        let frame = render::render(&world.map, &graph, &errors, &style);
+        let frame = render::render(&world.map, &graph, &errors, &warnings, &style);
 
         let mut stdout = std::io::stdout().lock();
         if args.watch {

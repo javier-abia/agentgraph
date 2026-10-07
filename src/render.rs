@@ -88,19 +88,19 @@ fn agent_chip(a: &AgentNode, style: &Style) -> String {
 
 const INDENT: &str = "     ";
 
-/// What follows an issue's title: its probability when placed, its best
-/// guess when not.
+/// What follows an issue's title: its probability when placed under a
+/// module, its best guess when not placed.
 #[derive(Clone, Copy)]
-enum Section {
-    Module,
-    Unplaced,
+enum ModuleAnnotation {
+    Probability,
+    BestGuess,
 }
 
 fn render_issues(
     out: &mut String,
     map: &ModuleMap,
     issues: &[IssueNode],
-    section: Section,
+    annotation: ModuleAnnotation,
     style: &Style,
 ) {
     // Top-level issues first, then sub-issues grouped under their parent.
@@ -129,9 +129,9 @@ fn render_issues(
             issue.title
         );
         if let Some(link) = &issue.module {
-            let note = match section {
-                Section::Module => format!(" {:.2}", link.confidence),
-                Section::Unplaced => format!(
+            let note = match annotation {
+                ModuleAnnotation::Probability => format!("  {:.2}", link.confidence),
+                ModuleAnnotation::BestGuess => format!(
                     " (best guess: {} {:.2})",
                     map.modules[link.target].label, link.confidence
                 ),
@@ -146,9 +146,17 @@ fn render_issues(
     }
 }
 
-/// Draws one frame. `errors` (a source that failed this tick) go on top, one
-/// `✗` line each; the graph below is drawn from whatever data there is.
-pub fn render(map: &ModuleMap, graph: &Graph, errors: &[String], style: &Style) -> String {
+/// Draws one frame. `errors` (the classifier or its cache failed this tick)
+/// go on top, one `✗` line each; `warnings` (a source serving stale data, like
+/// GitHub) go at the bottom, one `!` line each. The graph in between is drawn
+/// from whatever data there is.
+pub fn render(
+    map: &ModuleMap,
+    graph: &Graph,
+    errors: &[String],
+    warnings: &[String],
+    style: &Style,
+) -> String {
     let mut out = String::new();
     for e in errors {
         let _ = writeln!(out, "{}", style.paint("31", &format!("✗ {e}")));
@@ -190,7 +198,13 @@ pub fn render(map: &ModuleMap, graph: &Graph, errors: &[String], style: &Style) 
             out.push_str(&style.dim("  —"));
         }
         out.push('\n');
-        render_issues(&mut out, map, &node.issues, Section::Module, style);
+        render_issues(
+            &mut out,
+            map,
+            &node.issues,
+            ModuleAnnotation::Probability,
+            style,
+        );
     }
 
     if !graph.unplaced_issues.is_empty() {
@@ -204,7 +218,7 @@ pub fn render(map: &ModuleMap, graph: &Graph, errors: &[String], style: &Style) 
             &mut out,
             map,
             &graph.unplaced_issues,
-            Section::Unplaced,
+            ModuleAnnotation::BestGuess,
             style,
         );
     }
@@ -227,6 +241,10 @@ pub fn render(map: &ModuleMap, graph: &Graph, errors: &[String], style: &Style) 
         for e in &map.edges {
             let _ = writeln!(out, "   {} ─▶ {}", label(&e.from), label(&e.to));
         }
+    }
+
+    for w in warnings {
+        let _ = writeln!(out, "\n {}", style.paint("31", &format!("! {w}")));
     }
 
     out
@@ -273,7 +291,7 @@ mod tests {
             no_issue_agents: vec![node(Some("main"), None)],
             ..Default::default()
         };
-        let out = render(&map, &graph, &[], &Style { color: false });
+        let out = render(&map, &graph, &[], &[], &Style { color: false });
         assert!(out.contains("? No issue\n"), "{out}");
         assert!(out.contains("⎇ main"), "{out}");
     }
@@ -306,8 +324,8 @@ mod tests {
             ],
             ..Default::default()
         };
-        let out = render(&map, &graph, &[], &Style { color: false });
-        assert!(out.contains("#102 Floor scores 0.82\n"), "{out}");
+        let out = render(&map, &graph, &[], &[], &Style { color: false });
+        assert!(out.contains("#102 Floor scores  0.82\n"), "{out}");
     }
 
     #[test]
@@ -321,7 +339,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let out = render(&map, &graph, &[], &Style { color: false });
+        let out = render(&map, &graph, &[], &[], &Style { color: false });
         assert!(
             out.contains("#102 Floor scores (best guess: Search 0.42)\n"),
             "{out}"
@@ -338,9 +356,30 @@ mod tests {
             ..Default::default()
         };
         let errors = ["OPENROUTER_API_KEY not set".to_string()];
-        let out = render(&map, &graph, &errors, &Style { color: false });
+        let out = render(&map, &graph, &errors, &[], &Style { color: false });
         assert!(out.starts_with("✗ OPENROUTER_API_KEY not set\n"), "{out}");
         assert!(out.contains("#102 Floor scores\n"), "{out}");
+    }
+
+    #[test]
+    fn warnings_go_at_the_bottom_apart_from_the_errors_on_top() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default(), Default::default()],
+            ..Default::default()
+        };
+        let errors = ["OpenRouter unreachable: 401 User not found".to_string()];
+        let warnings = ["GitHub unavailable, showing cached issues: offline".to_string()];
+        let out = render(&map, &graph, &errors, &warnings, &Style { color: false });
+        assert!(
+            out.starts_with("✗ OpenRouter unreachable: 401 User not found\n"),
+            "{out}"
+        );
+        assert!(
+            out.ends_with("\n ! GitHub unavailable, showing cached issues: offline\n"),
+            "{out}"
+        );
+        assert!(!out.contains("✗ GitHub"), "{out}");
     }
 
     #[test]
