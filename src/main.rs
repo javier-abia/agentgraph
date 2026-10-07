@@ -153,7 +153,7 @@ fn classify(
     let mut misses = Vec::new();
     for issue in graph::issues_to_classify(world) {
         let key = cache::key(issue, modules, jev::MODEL);
-        match cache.get(issue.number, &key) {
+        match cache.get(&key) {
             Some(c) => {
                 classifications.insert(issue.number, c.clone());
             }
@@ -169,7 +169,7 @@ fn classify(
     }
     for (issue, key) in misses {
         if let Some(c) = fresh.get(&issue.number) {
-            cache.insert(issue.number, key, c.clone());
+            cache.insert(key, c.clone());
         }
     }
     if let Some(path) = cache_path

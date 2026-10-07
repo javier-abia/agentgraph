@@ -46,19 +46,21 @@ impl Cache {
         std::fs::rename(&tmp, path).with_context(|| format!("writing {}", path.display()))
     }
 
-    /// The cached classification for `issue` under `key`, if there is one.
-    pub fn get(&self, issue: u64, key: &str) -> Option<&Classification> {
+    /// The cached classification made under `key`, if there is one.
+    pub fn get(&self, key: &CacheKey) -> Option<&Classification> {
         self.entries
-            .get(&issue)
-            .filter(|e| e.key == key)
+            .get(&key.issue)
+            .filter(|e| e.key == key.key)
             .map(|e| &e.classification)
     }
 
-    pub fn insert(&mut self, issue: u64, key: String, classification: Classification) {
+    /// Stores `classification` under `key`, replacing any older entry for
+    /// the same issue.
+    pub fn insert(&mut self, key: CacheKey, classification: Classification) {
         self.entries.insert(
-            issue,
+            key.issue,
             Entry {
-                key,
+                key: key.key,
                 classification,
             },
         );
@@ -80,21 +82,32 @@ pub fn path(project: &str) -> Option<PathBuf> {
     Some(base.join("agentgraph").join(format!("{file}.json")))
 }
 
+/// What an issue's classification was made under. The issue number picks the
+/// entry; the rest of the key must match for it to be reused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheKey {
+    issue: u64,
+    key: String,
+}
+
 /// The cache key for one issue's classification. Pass the slug the request
 /// sends, not the dated snapshot a response reports.
-pub fn key(issue: &Issue, modules: &[Module], model: &str) -> String {
+pub fn key(issue: &Issue, modules: &[Module], model: &str) -> CacheKey {
     // JSON keeps the fields apart, so ("ab", "c") and ("a", "bc") differ.
     let modules: Vec<_> = modules
         .iter()
         .map(|m| (&m.id, &m.label, &m.description))
         .collect();
     let modules = serde_json::to_string(&modules).expect("strings serialize");
-    format!(
-        "{}|{}|{:016x}|{model}",
-        issue.number,
-        issue.updated_at,
-        fnv1a(modules.as_bytes())
-    )
+    CacheKey {
+        issue: issue.number,
+        key: format!(
+            "{}|{}|{:016x}|{model}",
+            issue.number,
+            issue.updated_at,
+            fnv1a(modules.as_bytes())
+        ),
+    }
 }
 
 /// 64-bit FNV-1a. Unlike `DefaultHasher`, its output is fixed across Rust
@@ -194,14 +207,17 @@ mod tests {
     fn a_stale_entry_misses_and_is_replaced_by_the_new_one() {
         let mut cache = Cache::default();
         let old = key(&issue(102, T0), &modules(), MODEL);
-        cache.insert(102, old.clone(), [("search".into(), 0.8)].into());
-        assert!(cache.get(102, &old).is_some());
+        cache.insert(old.clone(), [("search".into(), 0.8)].into());
+        assert!(cache.get(&old).is_some());
 
         let new = key(&issue(102, "2026-10-02T10:00:00Z"), &modules(), MODEL);
-        assert!(cache.get(102, &new).is_none(), "issue edited");
-        cache.insert(102, new.clone(), [("search".into(), 0.3)].into());
-        assert_eq!(cache.get(102, &new).unwrap()["search"], 0.3);
-        assert!(cache.get(102, &old).is_none(), "one entry per issue");
+        assert!(cache.get(&new).is_none(), "issue edited");
+        cache.insert(new.clone(), [("search".into(), 0.3)].into());
+        assert_eq!(cache.get(&new).unwrap()["search"], 0.3);
+        assert!(cache.get(&old).is_none(), "one entry per issue");
+
+        let other = key(&issue(103, T0), &modules(), MODEL);
+        assert!(cache.get(&other).is_none(), "another issue");
     }
 
     #[test]
