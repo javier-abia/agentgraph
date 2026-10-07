@@ -150,16 +150,8 @@ fn error_message(json: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modulemap::module;
     use serde_json::json;
-
-    fn module(id: &str, label: &str, description: Option<&str>, paths: &[&str]) -> Module {
-        Module {
-            id: id.into(),
-            label: label.into(),
-            description: description.map(Into::into),
-            paths: paths.iter().map(|p| p.to_string()).collect(),
-        }
-    }
 
     fn issue(title: &str, body: &str) -> Issue {
         Issue {

@@ -108,15 +108,7 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn module(id: &str, label: &str, description: Option<&str>, paths: &[&str]) -> Module {
-        Module {
-            id: id.into(),
-            label: label.into(),
-            description: description.map(Into::into),
-            paths: paths.iter().map(|p| p.to_string()).collect(),
-        }
-    }
+    use crate::modulemap::module;
 
     fn modules() -> Vec<Module> {
         vec![
