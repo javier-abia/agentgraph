@@ -31,23 +31,12 @@ pub struct RepoFacts {
     pub branch: Option<String>,
     /// True when `branch` is the repo's default branch (e.g. main).
     pub on_default_branch: bool,
-    /// Files changed against the default branch, uncommitted edits included.
-    pub changes: Vec<FileChange>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FileChange {
-    /// Relative to the worktree root.
-    pub path: PathBuf,
-    /// Lines added plus removed; at least 1 so binary/new files still count.
-    pub lines: u32,
 }
 
 #[derive(Debug, Clone)]
 pub struct Issue {
     pub number: u64,
     pub title: String,
-    pub labels: Vec<String>,
     pub parent: Option<IssueRef>,
 }
 

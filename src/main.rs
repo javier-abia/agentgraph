@@ -46,7 +46,7 @@ struct Args {
     #[arg(long, default_value_t = 60)]
     github_ttl: u64,
 
-    /// Don't query GitHub; agents are then placed by their changes only.
+    /// Don't query GitHub; agents are then all listed under "No issue".
     #[arg(long)]
     no_github: bool,
 

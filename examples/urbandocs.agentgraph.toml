@@ -4,11 +4,8 @@
 [project]
 name = "urbandocs"
 root = "~/Projects/Ayuntamiento/urbandocs"
-# Incidental edits that shouldn't pull an issue into a module.
-ignore = ["*.md", "**/uv.lock", "pyproject.toml", ".github/**", ".pre-commit-config.yaml"]
 
-# Each module lists its tests too, so an issue's tests count toward
-# the module they exercise.
+# Each module lists its tests too, as part of the module they exercise.
 
 [[module]]
 id = "server"

@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use globset::GlobBuilder;
 use serde::Deserialize;
 
 pub const FILE_NAME: &str = ".agentgraph.toml";
@@ -26,9 +26,8 @@ struct RawMap {
 struct RawProject {
     name: Option<String>,
     root: Option<String>,
-    /// Paths that never pull an issue into a module (READMEs, lockfiles…).
-    #[serde(default)]
-    ignore: Vec<String>,
+    /// Removed in v2; only read to reject it with a clear message.
+    ignore: Option<toml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,7 +49,6 @@ pub struct Edge {
 pub struct Module {
     pub id: String,
     pub label: String,
-    globs: GlobSet,
 }
 
 #[derive(Debug)]
@@ -59,7 +57,6 @@ pub struct ModuleMap {
     pub root: PathBuf,
     pub modules: Vec<Module>,
     pub edges: Vec<Edge>,
-    ignore: GlobSet,
 }
 
 impl ModuleMap {
@@ -68,6 +65,11 @@ impl ModuleMap {
     /// when none is set.
     pub fn parse(text: &str, map_dir: &Path) -> Result<Self> {
         let raw: RawMap = toml::from_str(text).context("parsing module map TOML")?;
+        if raw.project.ignore.is_some() {
+            bail!(
+                "project.ignore was removed: issues are no longer placed by the files they change. Delete it from the map."
+            );
+        }
 
         let root = match raw.project.root {
             Some(r) => map_dir.join(expand_tilde(&r)),
@@ -81,11 +83,10 @@ impl ModuleMap {
 
         let mut modules = Vec::with_capacity(raw.modules.len());
         for m in raw.modules {
-            let globs = glob_set(&m.paths).with_context(|| format!("module `{}`", m.id))?;
+            check_globs(&m.paths).with_context(|| format!("module `{}`", m.id))?;
             modules.push(Module {
                 label: m.label.unwrap_or_else(|| m.id.clone()),
                 id: m.id,
-                globs,
             });
         }
 
@@ -102,7 +103,6 @@ impl ModuleMap {
             root,
             modules,
             edges: raw.edges,
-            ignore: glob_set(&raw.project.ignore).context("project.ignore")?,
         })
     }
 
@@ -112,32 +112,18 @@ impl ModuleMap {
         let dir = path.parent().unwrap_or(Path::new("."));
         Self::parse(&text, dir).with_context(|| format!("in {}", path.display()))
     }
-
-    /// The module a repo-relative file path belongs to: the first module
-    /// whose globs match, unless the path is ignored.
-    pub fn module_of(&self, rel_path: &Path) -> Option<usize> {
-        if self.ignore.is_match(rel_path) {
-            return None;
-        }
-        self.modules.iter().position(|m| m.globs.is_match(rel_path))
-    }
-
-    pub fn index_of(&self, id: &str) -> Option<usize> {
-        self.modules.iter().position(|m| m.id == id)
-    }
 }
 
-/// `*` stays within one directory (like .gitignore); `**` crosses them.
-fn glob_set(patterns: &[String]) -> Result<GlobSet> {
-    let mut builder = GlobSetBuilder::new();
+/// Rejects malformed path globs early. `*` stays within one directory (like
+/// .gitignore); `**` crosses them.
+fn check_globs(patterns: &[String]) -> Result<()> {
     for p in patterns {
-        let glob = GlobBuilder::new(p)
+        GlobBuilder::new(p)
             .literal_separator(true)
             .build()
             .with_context(|| format!("bad glob `{p}`"))?;
-        builder.add(glob);
     }
-    Ok(builder.build()?)
+    Ok(())
 }
 
 /// Walks up from `start` looking for `.agentgraph.toml`, like git does for `.git`.
@@ -160,12 +146,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn star_does_not_cross_directories() {
-        let text =
-            "[project]\nignore = [\"*.md\"]\n[[module]]\nid = \"docs\"\npaths = [\"docs/**\"]\n";
-        let map = ModuleMap::parse(text, Path::new("/repo")).unwrap();
-        assert_eq!(map.module_of(Path::new("README.md")), None);
-        assert_eq!(map.module_of(Path::new("docs/research/x.md")), Some(0));
+    fn rejects_the_removed_project_ignore_with_a_clear_message() {
+        let text = "[project]\nignore = [\"*.md\"]\n[[module]]\nid = \"docs\"\n";
+        let err = ModuleMap::parse(text, Path::new("/repo")).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("project.ignore") && msg.contains("removed"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn rejects_bad_globs() {
+        let text = "[[module]]\nid = \"a\"\npaths = [\"src/[\"]\n";
+        assert!(ModuleMap::parse(text, Path::new("/repo")).is_err());
     }
 
     #[test]

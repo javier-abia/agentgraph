@@ -88,7 +88,7 @@ fn agent_chip(a: &AgentNode, style: &Style) -> String {
 
 const INDENT: &str = "     ";
 
-fn render_issues(out: &mut String, issues: &[IssueNode], map: &ModuleMap, style: &Style) {
+fn render_issues(out: &mut String, issues: &[IssueNode], style: &Style) {
     // Top-level issues first, then sub-issues grouped under their parent.
     let mut order: Vec<&IssueNode> = issues.iter().collect();
     order.sort_by_key(|i| (i.parent.as_ref().map(|p| p.number), i.number));
@@ -114,41 +114,10 @@ fn render_issues(out: &mut String, issues: &[IssueNode], map: &ModuleMap, style:
             style.bold(&format!("#{}", issue.number)),
             issue.title
         );
-        if issue.agents.is_empty() {
-            out.push_str(&style.paint(
-                "35",
-                if issue.ready {
-                    "  · unclaimed"
-                } else {
-                    "  · no agent"
-                },
-            ));
-        }
         out.push('\n');
 
         for a in &issue.agents {
             let _ = writeln!(out, "{indent}  {}", agent_chip(a, style));
-        }
-
-        let mut notes = Vec::new();
-        if issue
-            .modules
-            .first()
-            .is_some_and(|l| l.source == LinkSource::Label)
-        {
-            notes.push("by label".to_string());
-        }
-        let also: Vec<String> = issue
-            .modules
-            .iter()
-            .skip(1)
-            .map(|l| format!("{} {:.0}%", map.modules[l.target].label, l.weight * 100.0))
-            .collect();
-        if !also.is_empty() {
-            notes.push(format!("also: {}", also.join(", ")));
-        }
-        if !notes.is_empty() {
-            let _ = writeln!(out, "{indent}  {}", style.dim(&notes.join(" · ")));
         }
     }
 }
@@ -159,9 +128,9 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
     let agents: Vec<&AgentNode> = graph
         .modules
         .iter()
-        .flat_map(|m| m.issues.iter().flat_map(|i| &i.agents).chain(&m.agents))
+        .flat_map(|m| m.issues.iter().flat_map(|i| &i.agents))
         .chain(graph.unplaced_issues.iter().flat_map(|i| &i.agents))
-        .chain(&graph.unlinked_agents)
+        .chain(&graph.no_issue_agents)
         .collect();
     let working = agents
         .iter()
@@ -180,13 +149,8 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
     out.push_str("\n\n");
 
     for (module, node) in map.modules.iter().zip(&graph.modules) {
-        let status = busiest(
-            node.issues
-                .iter()
-                .flat_map(|i| &i.agents)
-                .chain(&node.agents),
-        );
-        let empty = node.issues.is_empty() && node.agents.is_empty();
+        let status = busiest(node.issues.iter().flat_map(|i| &i.agents));
+        let empty = node.issues.is_empty();
         let label = if empty {
             style.dim(&module.label)
         } else {
@@ -197,15 +161,7 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
             out.push_str(&style.dim("  —"));
         }
         out.push('\n');
-        render_issues(&mut out, &node.issues, map, style);
-        for a in &node.agents {
-            let _ = writeln!(
-                out,
-                "{INDENT}{} {}",
-                agent_chip(a, style),
-                style.dim("(no issue)")
-            );
-        }
+        render_issues(&mut out, &node.issues, style);
     }
 
     if !graph.unplaced_issues.is_empty() {
@@ -215,16 +171,11 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
             style.dim("?"),
             style.bold("Not placed in a module")
         );
-        render_issues(&mut out, &graph.unplaced_issues, map, style);
+        render_issues(&mut out, &graph.unplaced_issues, style);
     }
-    if !graph.unlinked_agents.is_empty() {
-        let _ = writeln!(
-            out,
-            "\n {} {}",
-            style.dim("?"),
-            style.bold("No issue, no changes")
-        );
-        for a in &graph.unlinked_agents {
+    if !graph.no_issue_agents.is_empty() {
+        let _ = writeln!(out, "\n {} {}", style.dim("?"), style.bold("No issue"));
+        for a in &graph.no_issue_agents {
             let _ = writeln!(out, "{INDENT}{}", agent_chip(a, style));
         }
     }
@@ -279,6 +230,20 @@ mod tests {
         );
         assert!(chip.contains("⎇ tool-schema"), "{chip}");
         assert!(!chip.contains("srv"), "{chip}");
+    }
+
+    #[test]
+    fn lists_agents_without_an_issue_under_no_issue() {
+        let map =
+            ModuleMap::parse("[[module]]\nid = \"a\"\n", std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default()],
+            no_issue_agents: vec![node(Some("main"), None)],
+            ..Default::default()
+        };
+        let out = render(&map, &graph, &[], &Style { color: false });
+        assert!(out.contains("? No issue\n"), "{out}");
+        assert!(out.contains("⎇ main"), "{out}");
     }
 
     #[test]
