@@ -107,8 +107,8 @@ fn main() -> Result<()> {
         bail!("--watch needs a terminal; leave it out to print once");
     }
 
-    let mut github = GitHub::new(&map.root, Duration::from_secs(args.github_ttl));
-    let mut world = World {
+    let github = GitHub::new(&map.root, Duration::from_secs(args.github_ttl));
+    let world = World {
         project_git_dir: git::repo_facts(&map.root).map(|r| r.git_dir),
         map,
         agents: Vec::new(),
@@ -116,80 +116,79 @@ fn main() -> Result<()> {
         prs: Vec::new(),
         classifications: Default::default(),
     };
-
     let cache_path = cache::path(&world.map.name);
-    let mut cache = cache_path.as_deref().map(Cache::load).unwrap_or_default();
-    let jev = Jev::from_env();
+    let mut collectors = Collectors {
+        cache: cache_path.as_deref().map(Cache::load).unwrap_or_default(),
+        cache_path,
+        world,
+        github: (!args.no_github).then_some(github),
+        jev: Jev::from_env(),
+        snapshot: args.snapshot,
+    };
 
     if !args.watch {
-        let (graph, errors, warnings) = tick(
-            &mut world,
-            &mut github,
-            &jev,
-            &mut cache,
-            cache_path.as_deref(),
-            args.snapshot.as_deref(),
-            args.no_github,
-        )?;
+        let (graph, errors, warnings) = collectors.tick()?;
         let style = render::Style {
             color: !args.no_color && std::io::stdout().is_terminal(),
         };
         print!(
             "{}",
-            render::render(&world.map, &graph, &errors, &warnings, &style)
+            render::render(&collectors.world.map, &graph, &errors, &warnings, &style)
         );
         return Ok(());
     }
 
-    let map = tui::MapInfo::from(&world.map);
+    let map = tui::MapInfo::from(&collectors.world.map);
     let interval = Duration::from_secs_f64(args.interval);
-    tui::run(map, move || {
-        let t = tick(
-            &mut world,
-            &mut github,
-            &jev,
-            &mut cache,
-            cache_path.as_deref(),
-            args.snapshot.as_deref(),
-            args.no_github,
-        );
-        (t, interval)
-    })
+    tui::run(map, move || (collectors.tick(), interval))
 }
 
-/// One collection pass: reads herdr and GitHub into the World, classifies
-/// the issues agents are on, and builds the graph. Errors are failures
-/// worth flagging on top (the classifier or its cache); warnings are
-/// sources serving stale data.
-fn tick(
-    world: &mut World,
-    github: &mut GitHub,
-    jev: &Jev,
-    cache: &mut Cache,
-    cache_path: Option<&Path>,
-    snapshot: Option<&Path>,
-    no_github: bool,
-) -> tui::Tick {
-    world.agents = herdr::fetch_agents(snapshot)?
-        .into_iter()
-        .map(|agent| AgentFacts {
-            repo: git::repo_facts(&agent.cwd),
-            agent,
-        })
-        .collect();
-    let mut warnings = Vec::new();
-    if !no_github {
-        let data = github.data();
-        (world.issues, world.prs) = (data.issues, data.prs);
-        if let Some(e) = &github.error {
-            warnings.push(format!("GitHub unavailable, showing cached issues: {e}"));
+/// Everything a tick reads from, and the World it fills.
+struct Collectors {
+    world: World,
+    /// None with `--no-github`.
+    github: Option<GitHub>,
+    jev: Jev,
+    cache: Cache,
+    cache_path: Option<PathBuf>,
+    /// A saved herdr snapshot to read instead of herdr.
+    snapshot: Option<PathBuf>,
+}
+
+impl Collectors {
+    /// One collection pass: reads herdr and GitHub into the World, classifies
+    /// the issues agents are on, and builds the graph. Errors are failures
+    /// worth flagging on top (the classifier or its cache); warnings are
+    /// sources serving stale data.
+    fn tick(&mut self) -> tui::Tick {
+        let world = &mut self.world;
+        world.agents = herdr::fetch_agents(self.snapshot.as_deref())?
+            .into_iter()
+            .map(|agent| AgentFacts {
+                repo: git::repo_facts(&agent.cwd),
+                agent,
+            })
+            .collect();
+        let mut warnings = Vec::new();
+        if let Some(github) = &mut self.github {
+            let data = github.data();
+            (world.issues, world.prs) = (data.issues, data.prs);
+            if let Some(e) = &github.error {
+                warnings.push(format!("GitHub unavailable, showing cached issues: {e}"));
+            }
         }
+
+        let mut errors = Vec::new();
+        world.classifications = classify(
+            world,
+            &self.jev,
+            &mut self.cache,
+            self.cache_path.as_deref(),
+            &mut errors,
+        );
+
+        Ok((graph::build(world), errors, warnings))
     }
-
-    let mut errors = Vec::new();
-    world.classifications = classify(world, jev, cache, cache_path, &mut errors);
-
-    Ok((graph::build(world), errors, warnings))
 }
 
 /// Classifies the issues live agents are on: cached classifications first,

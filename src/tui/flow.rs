@@ -1,6 +1,7 @@
 //! The module map as the diagram sees it: module labels, and the `[[edge]]`s
 //! turned around to point the way data flows, laid out in rows.
 
+use crate::graph;
 use crate::modulemap::ModuleMap;
 
 /// What the UI needs from the module map; the map itself stays with the
@@ -8,23 +9,17 @@ use crate::modulemap::ModuleMap;
 pub struct MapInfo {
     pub name: String,
     pub labels: Vec<String>,
-    /// The map's edges as data flow, (upstream, downstream): an edge
-    /// `from = A, to = B` means A depends on B, so data flows from B into A.
+    /// The map's edges as data flow, (upstream, downstream); see
+    /// `graph::data_flow`.
     pub flow: Vec<(usize, usize)>,
 }
 
 impl From<&ModuleMap> for MapInfo {
     fn from(map: &ModuleMap) -> Self {
-        // Edge endpoints are validated against module ids when the map loads.
-        let idx = |id: &str| map.modules.iter().position(|m| m.id == id);
         Self {
             name: map.name.clone(),
             labels: map.modules.iter().map(|m| m.label.clone()).collect(),
-            flow: map
-                .edges
-                .iter()
-                .filter_map(|e| Some((idx(&e.to)?, idx(&e.from)?)))
-                .collect(),
+            flow: graph::data_flow(map),
         }
     }
 }
@@ -33,18 +28,18 @@ impl From<&ModuleMap> for MapInfo {
 /// exactly one row; modules with no edges share a last row of their own.
 ///
 /// A module's row is the longest data-flow path reaching it, so it sits
-/// below every module it reads from. Each row is ordered by where the
+/// below every module it reads from. A cycle is broken at the edge that
+/// closes it, walking the map in order. Each row is ordered by where the
 /// modules feeding it sit in the row above, so arrows cross less.
 pub fn layers(map: &MapInfo) -> Vec<Vec<usize>> {
     let n = map.labels.len();
     let connected = |m: usize| map.flow.iter().any(|&(a, b)| a == m || b == m);
+    let forward = acyclic(n, &map.flow);
     let mut depth = vec![0usize; n];
-    // Bounded relaxation, so a cycle in the map can't loop forever.
+    // Edges in a DAG: n passes reach every longest path.
     for _ in 0..n {
-        for &(up, down) in &map.flow {
-            if up != down {
-                depth[down] = depth[down].max((depth[up] + 1).min(n));
-            }
+        for &(up, down) in &forward {
+            depth[down] = depth[down].max(depth[up] + 1);
         }
     }
 
@@ -84,6 +79,39 @@ pub fn layers(map: &MapInfo) -> Vec<Vec<usize>> {
     layers
 }
 
+/// The flow edges minus those that close a cycle (and self-edges): the
+/// back edges of a depth-first walk from each module in map order.
+fn acyclic(n: usize, flow: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        New,
+        Open,
+        Done,
+    }
+    fn walk(m: usize, flow: &[(usize, usize)], mark: &mut [Mark], out: &mut Vec<(usize, usize)>) {
+        mark[m] = Mark::Open;
+        for &(up, down) in flow.iter().filter(|e| e.0 == m) {
+            match mark[down] {
+                Mark::Open => {} // back up the walk: closes a cycle
+                Mark::New => {
+                    out.push((up, down));
+                    walk(down, flow, mark, out);
+                }
+                Mark::Done => out.push((up, down)),
+            }
+        }
+        mark[m] = Mark::Done;
+    }
+    let mut mark = vec![Mark::New; n];
+    let mut out = Vec::new();
+    for m in 0..n {
+        if mark[m] == Mark::New {
+            walk(m, flow, &mut mark, &mut out);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -99,13 +127,6 @@ mod tests {
             toml.push_str(&format!("[[edge]]\nfrom = \"{from}\"\nto = \"{to}\"\n"));
         }
         MapInfo::from(&ModuleMap::parse(&toml, Path::new("/repo")).unwrap())
-    }
-
-    #[test]
-    fn an_edge_flows_from_the_dependency_into_the_dependent() {
-        // server depends on search: search's data flows into server.
-        let m = info(&["server", "search"], &[("server", "search")]);
-        assert_eq!(m.flow, [(1, 0)]);
     }
 
     #[test]
@@ -144,6 +165,14 @@ mod tests {
             &[("x", "top"), ("y", "top"), ("z", "y"), ("w", "x")],
         );
         assert_eq!(layers(&m), [vec![4], vec![0, 1], vec![3, 2]]);
+    }
+
+    #[test]
+    fn a_cycle_keeps_the_modules_it_feeds_below_it() {
+        // a and b read each other; c reads a. Breaking the cycle at the
+        // edge back into a leaves a above both b and c.
+        let m = info(&["a", "b", "c"], &[("a", "b"), ("b", "a"), ("c", "a")]);
+        assert_eq!(layers(&m), [vec![0], vec![1, 2]]);
     }
 
     #[test]

@@ -114,16 +114,36 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 /// What goes in a box.
+#[derive(Clone, Copy)]
 enum Content<'a> {
     Module(usize),
     Unplaced(&'a [IssueNode]),
     NoIssue(&'a [AgentNode]),
 }
 
+/// A box in the diagram, and where it goes once placed.
+#[derive(Clone)]
 struct GBox<'a> {
     content: Content<'a>,
     title: String,
     rect: Rect,
+}
+
+impl<'a> GBox<'a> {
+    fn new(content: Content<'a>, title: String) -> Self {
+        Self {
+            content,
+            title,
+            rect: Rect::default(),
+        }
+    }
+
+    fn module(&self) -> Option<usize> {
+        match self.content {
+            Content::Module(m) => Some(m),
+            _ => None,
+        }
+    }
 }
 
 /// What is selected, as the diagram needs it.
@@ -169,8 +189,23 @@ fn issue_lines(
     sel: Option<&str>,
 ) -> Vec<Line<'static>> {
     let mut out = Vec::new();
+    let mut current_parent = None;
     for i in sorted(issues) {
-        let num = format!("#{}", i.number);
+        // Sub-issues are indented under a header for their parent.
+        let indent = match &i.parent {
+            Some(p) => {
+                if current_parent != Some(p.number) {
+                    current_parent = Some(p.number);
+                    out.push(Line::styled(
+                        truncate(&format!("#{} {}", p.number, p.title), inner),
+                        dim(),
+                    ));
+                }
+                "  "
+            }
+            None => "",
+        };
+        let num = format!("{indent}#{}", i.number);
         let prob = match (&i.module, best_guess) {
             (Some(m), false) => format!("  {:.2}", m.confidence),
             _ => String::new(),
@@ -329,59 +364,65 @@ pub fn draw(map: &MapInfo, g: &Graph, sel: Option<&Entry>, width: u16) -> Diagra
     let sel_module = sel.as_ref().and_then(|s| s.module);
 
     // Rows of boxes: the data-flow layers, then a tray for what has no module.
-    let mut rows: Vec<Vec<GBox>> = layers(map)
+    let layer_rows: Vec<Vec<GBox>> = layers(map)
         .into_iter()
         .map(|layer| {
             layer
                 .into_iter()
-                .map(|m| GBox {
-                    content: Content::Module(m),
-                    title: map.labels[m].to_uppercase(),
-                    rect: Rect::default(),
-                })
+                .map(|m| GBox::new(Content::Module(m), map.labels[m].to_uppercase()))
                 .collect()
         })
         .collect();
     let mut tray = Vec::new();
     if !g.unplaced_issues.is_empty() {
-        tray.push(GBox {
-            content: Content::Unplaced(&g.unplaced_issues),
-            title: "NOT PLACED".into(),
-            rect: Rect::default(),
-        });
+        tray.push(GBox::new(
+            Content::Unplaced(&g.unplaced_issues),
+            "NOT PLACED".into(),
+        ));
     }
     if !g.no_issue_agents.is_empty() {
-        tray.push(GBox {
-            content: Content::NoIssue(&g.no_issue_agents),
-            title: "NO ISSUE".into(),
-            rect: Rect::default(),
-        });
-    }
-    let tray_row = (!tray.is_empty()).then_some(rows.len());
-    if !tray.is_empty() {
-        rows.push(tray);
+        tray.push(GBox::new(
+            Content::NoIssue(&g.no_issue_agents),
+            "NO ISSUE".into(),
+        ));
     }
 
-    // Arrows that skip a row run down a channel of their own on the left.
-    let row_of: HashMap<usize, usize> = rows
-        .iter()
-        .enumerate()
-        .flat_map(|(ri, row)| {
-            row.iter().filter_map(move |b| match b.content {
-                Content::Module(m) => Some((m, ri)),
-                _ => None,
+    // A row with more boxes than fit side by side carries on below, and
+    // arrows that skip a row run down a channel of their own on the left.
+    // The channels take width, which can wrap more rows: repeat until the
+    // margin settles. It only grows, and is capped, so this ends.
+    let max_margin = width / 4;
+    let mut margin = 0;
+    let (mut rows, tray_row, long) = loop {
+        let fit = ((width.saturating_sub(margin) + GAP_X) / (MIN_BOX + GAP_X)).max(1) as usize;
+        let mut rows: Vec<Vec<GBox>> = layer_rows
+            .iter()
+            .flat_map(|row| row.chunks(fit).map(<[GBox]>::to_vec))
+            .collect();
+        let tray_row = (!tray.is_empty()).then_some(rows.len());
+        rows.extend(tray.chunks(fit).map(<[GBox]>::to_vec));
+
+        let row_of: HashMap<usize, usize> = rows
+            .iter()
+            .enumerate()
+            .flat_map(|(ri, row)| row.iter().filter_map(move |b| Some((b.module()?, ri))))
+            .collect();
+        let long: Vec<(usize, usize)> = map
+            .flow
+            .iter()
+            .copied()
+            .filter(|(a, b)| {
+                matches!((row_of.get(a), row_of.get(b)), (Some(ra), Some(rb)) if *rb > ra + 1)
             })
-        })
-        .collect();
-    let long: Vec<(usize, usize)> = map
-        .flow
-        .iter()
-        .copied()
-        .filter(
-            |(a, b)| matches!((row_of.get(a), row_of.get(b)), (Some(ra), Some(rb)) if *rb > ra + 1),
-        )
-        .collect();
-    let margin = 2 * long.len() as u16;
+            .collect();
+        let wanted = (2 * long.len() as u16).min(max_margin);
+        if wanted <= margin {
+            break (rows, tray_row, long);
+        }
+        margin = wanted;
+    };
+    // More long arrows than channels share them.
+    let channels = usize::from(margin / 2).max(1);
 
     // Size and place the boxes: natural width, squeezed to fit the row,
     // each row centred.
@@ -429,10 +470,7 @@ pub fn draw(map: &MapInfo, g: &Graph, sel: Option<&Entry>, width: u16) -> Diagra
     let rects: HashMap<usize, Rect> = rows
         .iter()
         .flatten()
-        .filter_map(|b| match b.content {
-            Content::Module(m) => Some((m, b.rect)),
-            _ => None,
-        })
+        .filter_map(|b| Some((b.module()?, b.rect)))
         .collect();
     let row_bottom = |r: &Rect| {
         rows.iter()
@@ -466,7 +504,7 @@ pub fn draw(map: &MapInfo, g: &Graph, sel: Option<&Entry>, width: u16) -> Diagra
         let pts = match long.iter().position(|&e| e == (up, down)) {
             None => vec![(xa, ra.bottom()), (xa, g0), (xb, g0), (xb, t1)],
             Some(k) => {
-                let cx = 1 + 2 * k as u16;
+                let cx = 1 + 2 * (k % channels) as u16;
                 vec![
                     (xa, ra.bottom()),
                     (xa, g0),
@@ -699,6 +737,39 @@ pub(super) mod tests {
         assert_eq!(d.buf[(r.x, r.y)].symbol(), "╔");
         let (_, y) = find(&d.buf, "MCP SERVER");
         assert_eq!(r.y, y);
+    }
+
+    #[test]
+    fn a_row_too_wide_for_the_screen_wraps_and_every_module_is_drawn() {
+        let ids: Vec<String> = (0..10).map(|i| format!("module{i}")).collect();
+        let toml: String = ids
+            .iter()
+            .map(|id| format!("[[module]]\nid = \"{id}\"\n"))
+            .collect();
+        let g = Graph {
+            modules: (0..10).map(|_| ModuleNode::default()).collect(),
+            ..Default::default()
+        };
+        let d = draw(&map(&toml), &g, None, 80);
+        let lines = text(&d.buf);
+        for id in &ids {
+            row_with(&lines, &format!(" {} ", id.to_uppercase()));
+        }
+    }
+
+    #[test]
+    fn sub_issues_sit_under_their_parent() {
+        let mut child = issue(91, 0, vec![agent("p1", "working")]);
+        child.parent = Some(crate::world::IssueRef {
+            number: 86,
+            title: "Cut token use".into(),
+        });
+        let mut g = busy_server();
+        g.modules[0].issues.push(child);
+        let lines = text(&draw(&map(SERVER_READS_SEARCH), &g, None, 80).buf);
+        let parent = row_with(&lines, "#86 Cut token use");
+        assert!(row_with(&lines, "#91 Issue 91") > parent);
+        assert!(row_with(&lines, "#7 Issue 7") < parent);
     }
 
     #[test]

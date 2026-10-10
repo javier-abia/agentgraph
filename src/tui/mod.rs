@@ -7,7 +7,6 @@
 mod diagram;
 mod flow;
 
-use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -20,6 +19,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::graph::{Graph, LinkSource};
+use crate::herdr;
 use diagram::{C_ACCENT, C_NUM, Entry, branch, dim, dot, entries};
 pub use flow::MapInfo;
 
@@ -174,25 +174,18 @@ where
             }
             match app.on_key(key.code) {
                 Some(Action::Quit) => return Ok(()),
-                Some(Action::Focus(pane)) => app.status = focus(&pane),
+                Some(Action::Focus(pane)) => {
+                    app.status = match herdr::focus_agent(&pane) {
+                        Ok(()) => format!("focused {pane}"),
+                        Err(e) => format!("{e:#}"),
+                    }
+                }
                 None => {}
             }
         }
     })();
     ratatui::restore();
     result
-}
-
-/// Switches herdr to the agent's pane.
-fn focus(pane: &str) -> String {
-    match Command::new("herdr")
-        .args(["agent", "focus", pane])
-        .output()
-    {
-        Ok(o) if o.status.success() => format!("focused {pane}"),
-        Ok(o) => format!("herdr: {}", String::from_utf8_lossy(&o.stderr).trim()),
-        Err(e) => format!("herdr: {e}"),
-    }
 }
 
 fn draw(f: &mut Frame, app: &mut App) {
