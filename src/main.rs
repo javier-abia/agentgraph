@@ -24,7 +24,10 @@ use world::{AgentFacts, Classification, World};
 
 /// Shows which modules and GitHub issues your herdr-managed agents are working on.
 #[derive(Parser)]
-#[command(version)]
+#[command(
+    version,
+    after_help = "Are you an AI asked to write or change a module map (.agentgraph.toml)?\n  Run: agentgraph --skill"
+)]
 struct Args {
     /// Module map to use. Defaults to the nearest `.agentgraph.toml`
     /// found walking up from the current directory.
@@ -58,10 +61,21 @@ struct Args {
     /// Disable ANSI colors (default when stdout is not a terminal).
     #[arg(long)]
     no_color: bool,
+
+    /// Print the agent skill for writing a module map and exit.
+    #[arg(long)]
+    skill: bool,
 }
+
+/// Bundled so the instructions always match this binary's map format.
+const SKILL: &str = include_str!("../skills/agentgraph-map/SKILL.md");
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if args.skill {
+        print!("{SKILL}");
+        return Ok(());
+    }
 
     let map_path = match args.map {
         Some(p) => p,

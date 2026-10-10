@@ -35,6 +35,7 @@ cargo run -- --map examples/urbandocs.agentgraph.toml --watch  # redraw every 2s
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
+| `--skill` | Print the agent skill for writing a module map. |
 
 Needs `herdr`, `git`, an authenticated `gh` (the `repo` permission is enough), `curl` 8.3 or later, and `OPENROUTER_API_KEY` set to an [OpenRouter](https://openrouter.ai) key for the issue classifier.
 
@@ -66,6 +67,8 @@ to = "search"   # server depends on search
 An edge reads "`from` depends on `to`": `to` produces something `from` reads, calls or loads, so data flows from `to` into `from`.
 
 Globs are relative to the root and work like `.gitignore`: `*` stays within one directory, `**` crosses directories.
+
+To have a coding agent write the map, tell it to run `agentgraph --skill` and follow it. The skill matches the installed version's map format. To make it findable in a project, add a line like this to its `AGENTS.md`: "To write or change `.agentgraph.toml`, run `agentgraph --skill`."
 
 `project.ignore` is gone: a map that still has it fails to load with a message asking you to delete it.
 
