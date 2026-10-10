@@ -63,6 +63,8 @@ from = "server"
 to = "search"   # server depends on search
 ```
 
+An edge reads "`from` depends on `to`": `to` produces something `from` reads, calls or loads, so data flows from `to` into `from`.
+
 Globs are relative to the root and work like `.gitignore`: `*` stays within one directory, `**` crosses directories.
 
 `project.ignore` is gone: a map that still has it fails to load with a message asking you to delete it.
