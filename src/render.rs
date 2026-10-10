@@ -88,7 +88,21 @@ fn agent_chip(a: &AgentNode, style: &Style) -> String {
 
 const INDENT: &str = "     ";
 
-fn render_issues(out: &mut String, issues: &[IssueNode], map: &ModuleMap, style: &Style) {
+/// What follows an issue's title: its probability when placed under a
+/// module, its best guess when not placed.
+#[derive(Clone, Copy)]
+enum ModuleAnnotation {
+    Probability,
+    BestGuess,
+}
+
+fn render_issues(
+    out: &mut String,
+    map: &ModuleMap,
+    issues: &[IssueNode],
+    annotation: ModuleAnnotation,
+    style: &Style,
+) {
     // Top-level issues first, then sub-issues grouped under their parent.
     let mut order: Vec<&IssueNode> = issues.iter().collect();
     order.sort_by_key(|i| (i.parent.as_ref().map(|p| p.number), i.number));
@@ -114,54 +128,46 @@ fn render_issues(out: &mut String, issues: &[IssueNode], map: &ModuleMap, style:
             style.bold(&format!("#{}", issue.number)),
             issue.title
         );
-        if issue.agents.is_empty() {
-            out.push_str(&style.paint(
-                "35",
-                if issue.ready {
-                    "  · unclaimed"
-                } else {
-                    "  · no agent"
-                },
-            ));
+        if let Some(link) = &issue.module {
+            let note = match annotation {
+                ModuleAnnotation::Probability => format!("  {:.2}", link.confidence),
+                ModuleAnnotation::BestGuess => format!(
+                    " (best guess: {} {:.2})",
+                    map.modules[link.target].label, link.confidence
+                ),
+            };
+            out.push_str(&style.dim(&note));
         }
         out.push('\n');
 
         for a in &issue.agents {
             let _ = writeln!(out, "{indent}  {}", agent_chip(a, style));
         }
-
-        let mut notes = Vec::new();
-        if issue
-            .modules
-            .first()
-            .is_some_and(|l| l.source == LinkSource::Label)
-        {
-            notes.push("by label".to_string());
-        }
-        let also: Vec<String> = issue
-            .modules
-            .iter()
-            .skip(1)
-            .map(|l| format!("{} {:.0}%", map.modules[l.target].label, l.weight * 100.0))
-            .collect();
-        if !also.is_empty() {
-            notes.push(format!("also: {}", also.join(", ")));
-        }
-        if !notes.is_empty() {
-            let _ = writeln!(out, "{indent}  {}", style.dim(&notes.join(" · ")));
-        }
     }
 }
 
-pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style) -> String {
+/// Draws one frame. `errors` (the classifier or its cache failed this tick)
+/// go on top, one `✗` line each; `warnings` (a source serving stale data, like
+/// GitHub) go at the bottom, one `!` line each. The graph in between is drawn
+/// from whatever data there is.
+pub fn render(
+    map: &ModuleMap,
+    graph: &Graph,
+    errors: &[String],
+    warnings: &[String],
+    style: &Style,
+) -> String {
     let mut out = String::new();
+    for e in errors {
+        let _ = writeln!(out, "{}", style.paint("31", &format!("✗ {e}")));
+    }
 
     let agents: Vec<&AgentNode> = graph
         .modules
         .iter()
-        .flat_map(|m| m.issues.iter().flat_map(|i| &i.agents).chain(&m.agents))
+        .flat_map(|m| m.issues.iter().flat_map(|i| &i.agents))
         .chain(graph.unplaced_issues.iter().flat_map(|i| &i.agents))
-        .chain(&graph.unlinked_agents)
+        .chain(&graph.no_issue_agents)
         .collect();
     let working = agents
         .iter()
@@ -180,13 +186,8 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
     out.push_str("\n\n");
 
     for (module, node) in map.modules.iter().zip(&graph.modules) {
-        let status = busiest(
-            node.issues
-                .iter()
-                .flat_map(|i| &i.agents)
-                .chain(&node.agents),
-        );
-        let empty = node.issues.is_empty() && node.agents.is_empty();
+        let status = busiest(node.issues.iter().flat_map(|i| &i.agents));
+        let empty = node.issues.is_empty();
         let label = if empty {
             style.dim(&module.label)
         } else {
@@ -197,15 +198,13 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
             out.push_str(&style.dim("  —"));
         }
         out.push('\n');
-        render_issues(&mut out, &node.issues, map, style);
-        for a in &node.agents {
-            let _ = writeln!(
-                out,
-                "{INDENT}{} {}",
-                agent_chip(a, style),
-                style.dim("(no issue)")
-            );
-        }
+        render_issues(
+            &mut out,
+            map,
+            &node.issues,
+            ModuleAnnotation::Probability,
+            style,
+        );
     }
 
     if !graph.unplaced_issues.is_empty() {
@@ -215,16 +214,17 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
             style.dim("?"),
             style.bold("Not placed in a module")
         );
-        render_issues(&mut out, &graph.unplaced_issues, map, style);
-    }
-    if !graph.unlinked_agents.is_empty() {
-        let _ = writeln!(
-            out,
-            "\n {} {}",
-            style.dim("?"),
-            style.bold("No issue, no changes")
+        render_issues(
+            &mut out,
+            map,
+            &graph.unplaced_issues,
+            ModuleAnnotation::BestGuess,
+            style,
         );
-        for a in &graph.unlinked_agents {
+    }
+    if !graph.no_issue_agents.is_empty() {
+        let _ = writeln!(out, "\n {} {}", style.dim("?"), style.bold("No issue"));
+        for a in &graph.no_issue_agents {
             let _ = writeln!(out, "{INDENT}{}", agent_chip(a, style));
         }
     }
@@ -253,6 +253,7 @@ pub fn render(map: &ModuleMap, graph: &Graph, warnings: &[String], style: &Style
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{Link, ModuleNode};
     use crate::herdr::Agent;
     use std::path::PathBuf;
 
@@ -279,6 +280,106 @@ mod tests {
         );
         assert!(chip.contains("⎇ tool-schema"), "{chip}");
         assert!(!chip.contains("srv"), "{chip}");
+    }
+
+    #[test]
+    fn lists_agents_without_an_issue_under_no_issue() {
+        let map =
+            ModuleMap::parse("[[module]]\nid = \"a\"\n", std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default()],
+            no_issue_agents: vec![node(Some("main"), None)],
+            ..Default::default()
+        };
+        let out = render(&map, &graph, &[], &[], &Style { color: false });
+        assert!(out.contains("? No issue\n"), "{out}");
+        assert!(out.contains("⎇ main"), "{out}");
+    }
+
+    fn issue_node(number: u64, title: &str, module: Option<(usize, f32)>) -> IssueNode {
+        IssueNode {
+            number,
+            title: title.into(),
+            parent: None,
+            module: module.map(|(target, confidence)| Link {
+                target,
+                source: LinkSource::Classifier,
+                confidence,
+            }),
+            agents: vec![node(Some("b"), None)],
+        }
+    }
+
+    const TWO_MODULES: &str = "[[module]]\nid = \"server\"\nlabel = \"MCP server\"\n[[module]]\nid = \"search\"\nlabel = \"Search\"\n";
+
+    #[test]
+    fn shows_the_probability_after_a_placed_issue() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![
+                Default::default(),
+                ModuleNode {
+                    issues: vec![issue_node(102, "Floor scores", Some((1, 0.82)))],
+                },
+            ],
+            ..Default::default()
+        };
+        let out = render(&map, &graph, &[], &[], &Style { color: false });
+        assert!(out.contains("#102 Floor scores  0.82\n"), "{out}");
+    }
+
+    #[test]
+    fn shows_the_best_guess_after_an_unplaced_issue_and_nothing_without_one() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default(), Default::default()],
+            unplaced_issues: vec![
+                issue_node(102, "Floor scores", Some((1, 0.42))),
+                issue_node(103, "Unclassified", None),
+            ],
+            ..Default::default()
+        };
+        let out = render(&map, &graph, &[], &[], &Style { color: false });
+        assert!(
+            out.contains("#102 Floor scores (best guess: Search 0.42)\n"),
+            "{out}"
+        );
+        assert!(out.contains("#103 Unclassified\n"), "{out}");
+    }
+
+    #[test]
+    fn errors_go_on_top_and_the_graph_still_renders() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default(), Default::default()],
+            unplaced_issues: vec![issue_node(102, "Floor scores", None)],
+            ..Default::default()
+        };
+        let errors = ["OPENROUTER_API_KEY not set".to_string()];
+        let out = render(&map, &graph, &errors, &[], &Style { color: false });
+        assert!(out.starts_with("✗ OPENROUTER_API_KEY not set\n"), "{out}");
+        assert!(out.contains("#102 Floor scores\n"), "{out}");
+    }
+
+    #[test]
+    fn warnings_go_at_the_bottom_apart_from_the_errors_on_top() {
+        let map = ModuleMap::parse(TWO_MODULES, std::path::Path::new("/repo")).unwrap();
+        let graph = Graph {
+            modules: vec![Default::default(), Default::default()],
+            ..Default::default()
+        };
+        let errors = ["OpenRouter unreachable: 401 User not found".to_string()];
+        let warnings = ["GitHub unavailable, showing cached issues: offline".to_string()];
+        let out = render(&map, &graph, &errors, &warnings, &Style { color: false });
+        assert!(
+            out.starts_with("✗ OpenRouter unreachable: 401 User not found\n"),
+            "{out}"
+        );
+        assert!(
+            out.ends_with("\n ! GitHub unavailable, showing cached issues: offline\n"),
+            "{out}"
+        );
+        assert!(!out.contains("✗ GitHub"), "{out}");
     }
 
     #[test]

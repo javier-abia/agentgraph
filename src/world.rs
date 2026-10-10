@@ -1,6 +1,7 @@
 //! A world snapshot: everything the collectors gathered in one tick, as plain
 //! data. The graph is a pure function of this, which is the test seam.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::herdr::Agent;
@@ -14,7 +15,15 @@ pub struct World {
     pub agents: Vec<AgentFacts>,
     pub issues: Vec<Issue>,
     pub prs: Vec<PullRequest>,
+    /// Issue number → its classification. Issues not classified yet (or not
+    /// cached, when offline) are absent.
+    pub classifications: BTreeMap<u64, Classification>,
 }
+
+/// The classifier's answer for one issue: module id → probability (0..=1)
+/// that the issue belongs to that module. Each probability is independent;
+/// they need not sum to 1.
+pub type Classification = BTreeMap<String, f32>;
 
 pub struct AgentFacts {
     pub agent: Agent,
@@ -31,23 +40,16 @@ pub struct RepoFacts {
     pub branch: Option<String>,
     /// True when `branch` is the repo's default branch (e.g. main).
     pub on_default_branch: bool,
-    /// Files changed against the default branch, uncommitted edits included.
-    pub changes: Vec<FileChange>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FileChange {
-    /// Relative to the worktree root.
-    pub path: PathBuf,
-    /// Lines added plus removed; at least 1 so binary/new files still count.
-    pub lines: u32,
 }
 
 #[derive(Debug, Clone)]
 pub struct Issue {
     pub number: u64,
     pub title: String,
-    pub labels: Vec<String>,
+    /// Markdown body; the classifier reads it with the title.
+    pub body: String,
+    /// GitHub's `updatedAt` (RFC 3339), which changes when the issue is edited.
+    pub updated_at: String,
     pub parent: Option<IssueRef>,
 }
 

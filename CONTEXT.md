@@ -37,7 +37,7 @@ From the agent's branch (never the default branch), first match wins: issue numb
 Decided by the classifier alone, from the issue's title and body and the module map; GitHub labels and diffs are never used. The module with the highest probability places the issue if it reaches `min_confidence`. One module per issue.
 
 **Classifier**:
-Jev (`typesafe/jev-1.13`, TypeSafe's structured decision model, called through OpenRouter). It answers one yes/no question per module and returns a calibrated probability for each. Results are cached on disk until the issue, the module descriptions or the model change.
+Jev (`typesafe/jev-1.13`, TypeSafe's structured decision model, called through OpenRouter). It answers one yes/no question per module and returns a calibrated probability for each. Results are cached on disk until the issue, a module's id, label or description, the set of modules (one added or removed) or the model changes. Editing a module's path globs does not invalidate them.
 _Avoid_: LLM (Jev returns no text)
 
 **Unplaced**:

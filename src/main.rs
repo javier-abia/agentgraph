@@ -1,21 +1,26 @@
+mod cache;
 mod git;
 mod github;
 mod graph;
 mod herdr;
+mod jev;
 mod modulemap;
 mod render;
 mod world;
 
+use std::collections::BTreeMap;
 use std::io::{IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
 
+use cache::Cache;
 use github::GitHub;
+use jev::Jev;
 use modulemap::ModuleMap;
-use world::{AgentFacts, World};
+use world::{AgentFacts, Classification, World};
 
 /// Shows which modules and GitHub issues your herdr-managed agents are working on.
 #[derive(Parser)]
@@ -46,7 +51,7 @@ struct Args {
     #[arg(long, default_value_t = 60)]
     github_ttl: u64,
 
-    /// Don't query GitHub; agents are then placed by their changes only.
+    /// Don't query GitHub; agents are then all listed under "No issue".
     #[arg(long)]
     no_github: bool,
 
@@ -92,7 +97,12 @@ fn main() -> Result<()> {
         agents: Vec::new(),
         issues: Vec::new(),
         prs: Vec::new(),
+        classifications: Default::default(),
     };
+
+    let cache_path = cache::path(&world.map.name);
+    let mut cache = cache_path.as_deref().map(Cache::load).unwrap_or_default();
+    let jev = Jev::from_env();
 
     loop {
         world.agents = herdr::fetch_agents(args.snapshot.as_deref())?
@@ -111,8 +121,12 @@ fn main() -> Result<()> {
             }
         }
 
+        let mut errors = Vec::new();
+        world.classifications =
+            classify(&world, &jev, &mut cache, cache_path.as_deref(), &mut errors);
+
         let graph = graph::build(&world);
-        let frame = render::render(&world.map, &graph, &warnings, &style);
+        let frame = render::render(&world.map, &graph, &errors, &warnings, &style);
 
         let mut stdout = std::io::stdout().lock();
         if args.watch {
@@ -126,5 +140,131 @@ fn main() -> Result<()> {
             return Ok(());
         }
         std::thread::sleep(Duration::from_secs_f64(args.interval));
+    }
+}
+
+/// Classifies the issues live agents are on: cached classifications first,
+/// Jev only for the misses, and the fresh results saved for the next tick.
+/// With nothing to classify, Jev is not asked and no error is shown.
+fn classify(
+    world: &World,
+    jev: &Jev,
+    cache: &mut Cache,
+    cache_path: Option<&Path>,
+    errors: &mut Vec<String>,
+) -> BTreeMap<u64, Classification> {
+    let modules = &world.map.modules;
+    let mut classifications = BTreeMap::new();
+    let wanted = graph::issues_to_classify(world);
+    if wanted.is_empty() {
+        return classifications;
+    }
+    let mut misses = Vec::new();
+    for issue in wanted {
+        match cache.get(&cache::key(issue, modules, jev::MODEL)) {
+            Some(c) => {
+                classifications.insert(issue.number, c.clone());
+            }
+            None => misses.push(issue),
+        }
+    }
+
+    let classified = jev.classify(&misses, modules);
+    errors.extend(classified.failure.map(|f| f.to_string()));
+    let fresh = classified.classifications;
+    if fresh.is_empty() {
+        return classifications;
+    }
+    for issue in misses {
+        if let Some(c) = fresh.get(&issue.number) {
+            cache.insert(cache::key(issue, modules, jev::MODEL), c.clone());
+        }
+    }
+    if let Some(path) = cache_path
+        && let Err(e) = cache.save(path)
+    {
+        errors.push(format!("classification cache not saved: {e:#}"));
+    }
+    classifications.extend(fresh);
+    classifications
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::herdr::Agent;
+    use crate::world::{Issue, RepoFacts};
+
+    const GIT_DIR: &str = "/home/u/urbandocs/.git";
+
+    fn world(agents: Vec<AgentFacts>) -> World {
+        World {
+            map: ModuleMap::parse(
+                "[[module]]\nid = \"search\"\n",
+                Path::new("/home/u/urbandocs"),
+            )
+            .unwrap(),
+            project_git_dir: Some(GIT_DIR.into()),
+            agents,
+            issues: vec![Issue {
+                number: 102,
+                title: "Floor search results".into(),
+                body: String::new(),
+                updated_at: "2026-10-01T10:00:00Z".into(),
+                parent: None,
+            }],
+            prs: Vec::new(),
+            classifications: Default::default(),
+        }
+    }
+
+    fn agent_on(branch: &str) -> AgentFacts {
+        AgentFacts {
+            agent: Agent {
+                agent: "claude".into(),
+                agent_status: "working".into(),
+                pane_id: "p1".into(),
+                cwd: "/home/u/urbandocs".into(),
+                title: None,
+            },
+            repo: Some(RepoFacts {
+                git_dir: GIT_DIR.into(),
+                toplevel: "/home/u/urbandocs".into(),
+                branch: Some(branch.into()),
+                on_default_branch: false,
+            }),
+        }
+    }
+
+    #[test]
+    fn no_key_error_when_nothing_needs_classifying() {
+        let w = world(vec![]);
+        let mut errors = Vec::new();
+        let c = classify(
+            &w,
+            &Jev::without_key(),
+            &mut Cache::default(),
+            None,
+            &mut errors,
+        );
+        assert!(c.is_empty());
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn no_key_error_shown_even_when_every_issue_is_cached() {
+        let w = world(vec![agent_on("search-floor-102")]);
+        let mut cache = Cache::default();
+        let cached: Classification = [("search".to_string(), 0.8)].into();
+        cache.insert(
+            cache::key(&w.issues[0], &w.map.modules, jev::MODEL),
+            cached.clone(),
+        );
+        let mut errors = Vec::new();
+        let c = classify(&w, &Jev::without_key(), &mut cache, None, &mut errors);
+        assert_eq!(c.get(&102), Some(&cached));
+        assert_eq!(errors, ["OPENROUTER_API_KEY not set"]);
     }
 }

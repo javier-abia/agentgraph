@@ -6,15 +6,14 @@ A terminal view of what your [herdr](https://herdr.dev) agents are doing: which 
 urbandocs · 2 agents (1 working) · 1 elsewhere
 
  · MCP server  —
- ● Scripts
-     #107 Prototype delegating search→get to a Codex subagent, verbatim-output-first
-       ● codex w2:p1 ⎇ prototype-delegating-search-get-to-a-codex-subag (title match)
+ · Scripts  —
  · Evals  —
 
  ? Not placed in a module
-     #63 Render the fidelity disclosure on returned text  · unclaimed
+     #107 Prototype delegating search→get to a Codex subagent, verbatim-output-first
+       ● codex w2:p1 ⎇ prototype-delegating-search-get-to-a-codex-subag (title match)
 
- ? No issue, no changes
+ ? No issue
      ○ claude w3:p6 ⎇ main "Fresh start" (idle)
 
  depends on
@@ -34,10 +33,16 @@ cargo run -- --map examples/urbandocs.agentgraph.toml --watch  # redraw every 2s
 | `--root DIR` | Overrides `project.root` from the map. |
 | `--watch`, `--interval S` | Redraw continuously. |
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
-| `--no-github` | Skip GitHub; agents are placed by their changes only. |
+| `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
 
-Needs `herdr`, `git`, and an authenticated `gh` (the `repo` permission is enough).
+Needs `herdr`, `git`, an authenticated `gh` (the `repo` permission is enough), `curl` 8.3 or later, and `OPENROUTER_API_KEY` set to an [OpenRouter](https://openrouter.ai) key for the issue classifier.
+
+```sh
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+Without the key, or when OpenRouter can't be reached, the view still renders: when some agent's issue needs classifying, an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, cached classifications are still used, and issues with nothing cached are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
 
 ## Module map
 
@@ -45,11 +50,12 @@ Needs `herdr`, `git`, and an authenticated `gh` (the `repo` permission is enough
 [project]
 name = "urbandocs"
 root = "~/Projects/Ayuntamiento/urbandocs"  # optional; defaults to the map's directory
-ignore = ["*.md", "**/uv.lock"]            # changes here never place an issue
+min_confidence = 0.5  # optional; the probability an issue's best module needs to place it
 
 [[module]]
 id = "search"
 label = "Search & read"
+description = "Query parsing, ranking, and resolving and reading cited documents."  # optional but recommended; what the classifier reads
 paths = ["src/urbandocs/search.py", "tests/unit/test_search.py"]  # include the module's tests
 
 [[edge]]
@@ -58,6 +64,8 @@ to = "search"   # server depends on search
 ```
 
 Globs are relative to the root and work like `.gitignore`: `*` stays within one directory, `**` crosses directories.
+
+`project.ignore` is gone: a map that still has it fails to load with a message asking you to delete it.
 
 ## How things get linked
 
@@ -68,13 +76,15 @@ Globs are relative to the root and work like `.gitignore`: `*` stays within one 
 2. A branch name that is the start of an open issue's title in branch form: `prototype-delegating-search-get-to-a-codex-subag` → #107.
 3. An open PR from that branch that closes an issue.
 
-**Issue → modules**, first match wins:
-1. `module:<id>` labels on the issue.
-2. The files its agents' branches changed against the default branch, uncommitted and untracked files included, weighted by lines changed. The issue is drawn under its heaviest module; the others are listed as "also".
+No match means the agent is listed under "No issue"; nothing guesses.
 
-**What's shown.** Issues with agents, plus open `ready-for-agent` issues without one (marked unclaimed). Agents without an issue are placed by their own changes, or listed separately. Sub-issues are grouped under their parent.
+**Issue → module.** No GitHub labels and no diffs are read. [Jev](https://openrouter.ai/docs/guides/community/jev) (`typesafe/jev-1.13` via OpenRouter) gets the issue's title and body (truncated to about 4k tokens) and one yes/no question per module, built from the module's `label` and `description`, or its `label` and `paths` when there is no description. Its probability of "yes" for each module is independent of the others. The issue goes under its most likely module when that probability reaches `min_confidence`, shown dimmed after the title. Otherwise it goes under "Not placed in a module" with `(best guess: <module> <p>)`. An issue with no classification (no key, or the request failed, with nothing cached) is unplaced with no guess.
 
-Every link records its source and a confidence value (1.0 for all v1 sources), ready for a v2 classifier.
+**Classification cache.** Classifications are saved in `~/.cache/agentgraph/<project>.json` (`$XDG_CACHE_HOME/agentgraph/` when that is set) and reused until the issue is edited (its `updatedAt` changes), a module's id, `label` or `description` changes, a module is added or removed, or the model changes. Editing `paths` does not reclassify, even for a module without a description. So Jev is called only for new or changed issues, and probabilities stay put between ticks. A corrupt or unreadable cache file counts as empty and is replaced on the next successful classification; delete it to reclassify everything.
+
+**What's shown.** Only live agents and the issues they are on. Issues with no agent are not shown. Sub-issues are grouped under their parent.
+
+Every link records its source and a confidence value: 1.0 for the agent → issue sources, the classifier's probability for issue → module.
 
 ## Development
 
