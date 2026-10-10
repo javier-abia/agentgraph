@@ -20,12 +20,32 @@ urbandocs · 2 agents (1 working) · 1 elsewhere
    Evals ─▶ MCP server
 ```
 
-## Usage
+## Installation
+
+Needs Rust (stable), [herdr](https://herdr.dev), `git`, an authenticated `gh` (the `repo` permission is enough), and `curl` 8.3 or later.
 
 ```sh
-cargo run -- --map examples/urbandocs.agentgraph.toml          # print once
-cargo run -- --map examples/urbandocs.agentgraph.toml --watch  # redraw every 2s
+git clone git@github.com:javier-abia/agentgraph.git
+cargo install --path agentgraph
 ```
+
+To update, `git pull` in the clone and run `cargo install --path .` again.
+
+The issue classifier calls [OpenRouter](https://openrouter.ai), so set your key, for example in your shell profile:
+
+```sh
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+## Usage
+
+1. **Write a module map.** Each project needs a `.agentgraph.toml` at its root (see [Module map](#module-map)). The easiest way to get one is to have your coding agent write it: tell the agent, "Run `agentgraph --skill` and follow it to write this project's module map." The skill is bundled with the binary, so it matches your installed version's map format. To help agents find it later, for example when asked to split a module, add this line to the project's `AGENTS.md`: "To write or change `.agentgraph.toml`, run `agentgraph --skill`."
+2. **Run it** from anywhere inside the project, while your agents run in herdr:
+
+   ```sh
+   agentgraph           # print once
+   agentgraph --watch   # redraw every 2s
+   ```
 
 | Flag | |
 |---|---|
@@ -35,12 +55,7 @@ cargo run -- --map examples/urbandocs.agentgraph.toml --watch  # redraw every 2s
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
-
-Needs `herdr`, `git`, an authenticated `gh` (the `repo` permission is enough), `curl` 8.3 or later, and `OPENROUTER_API_KEY` set to an [OpenRouter](https://openrouter.ai) key for the issue classifier.
-
-```sh
-export OPENROUTER_API_KEY=sk-or-...
-```
+| `--skill` | Print the agent skill for writing a module map. |
 
 Without the key, or when OpenRouter can't be reached, the view still renders: when some agent's issue needs classifying, an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, cached classifications are still used, and issues with nothing cached are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
 
@@ -62,6 +77,8 @@ paths = ["src/urbandocs/search.py", "tests/unit/test_search.py"]  # include the 
 from = "server"
 to = "search"   # server depends on search
 ```
+
+An edge reads "`from` depends on `to`": `to` produces something `from` reads, calls or loads, so data flows from `to` into `from`.
 
 Globs are relative to the root and work like `.gitignore`: `*` stays within one directory, `**` crosses directories.
 
@@ -95,6 +112,12 @@ git config core.hooksPath .githooks
 ```
 
 It runs the same checks as CI: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and `scripts/check-pure.sh`.
+
+Run from the checkout against the example map:
+
+```sh
+cargo run -- --map examples/urbandocs.agentgraph.toml
+```
 
 ## Roadmap
 

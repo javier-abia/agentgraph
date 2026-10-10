@@ -80,8 +80,8 @@ from = "search"
 to = "substrate"
 
 [[edge]]
-from = "ingest"
-to = "substrate"
+from = "substrate"
+to = "ingest"
 
 [[edge]]
 from = "evals"
