@@ -11,20 +11,20 @@ agentgraph shows which GitHub issue each coding agent is working on, under the m
 
 ### 1. Survey the project
 
-Read `git ls-files`, the README, any architecture or domain docs (`CONTEXT.md`, `docs/adr/`, `ARCHITECTURE.md`), and the open and recently closed issues (`gh issue list --state all --limit 60`).
+Read `git ls-files`, the README, and any architecture or domain docs (`CONTEXT.md`, `docs/adr/`, `ARCHITECTURE.md`). The structure comes from the code and docs.
 
-Done when you can name the project's stable parts and say which of the listed issues falls in each.
+Done when you can name the project's stable parts and say what each one does.
 
 ### 2. Choose the modules
 
-A module is a **stable part** of the project: a component that will still exist in a year, which many issues touch over time. Examples: the MCP server, search, ingest, evals. A feature being built right now is an issue, not a module.
+A module is a **stable part** of the project: a component that will still exist in a year, which many issues will touch over time. Examples: the MCP server, search, ingest, evals. A feature being built right now is an issue, not a module.
 
-- Aim for 4–12 modules. Each one should catch issues regularly. Two parts that always change together are one module.
-- Give a part whose work is mostly writing (research notes, docs) its own module when issues target it.
+- Aim for 4–12 modules. Two parts that always change together are one module.
+- Give a part whose work is mostly writing (research notes, docs) its own module when it is a real target of work.
 - `id`: short, lowercase, stable. Changing it reclassifies every issue, so pick it once.
 - `label`: what a person calls it, as shown in the view.
 
-Done when every issue from step 1 has exactly one module it clearly belongs to.
+Done when every source file from step 1 has exactly one module it clearly belongs to.
 
 ### 3. Write the descriptions
 
@@ -36,7 +36,9 @@ One or two sentences per module saying **what work belongs there**, in the words
 
 Editing a description later reclassifies every issue (it costs API calls, and placements can move), so get them right now.
 
-Done when each description, read alone, lets you decide yes/no for every issue from step 1 without hesitating.
+Then test the descriptions against open issues, if the repo has any (`gh issue list --state open --limit 30 --json number,title,body`). For each issue, ask the classifier's yes/no question of every module, reading only the title, body and descriptions. Reword a description whenever an issue gets a yes from two modules or from none. If several issues fit no module, a stable part may be missing: go back to step 2.
+
+Done when each description, read alone, gives exactly one yes for every open issue without hesitating, or the repo has no open issues.
 
 ### 4. Write the paths
 
@@ -77,7 +79,7 @@ agentgraph --map .agentgraph.toml --no-github \
 
 If `agentgraph` is not on PATH, ask the user how they run it.
 
-Then show the user the map with one line per module: the issues from step 1 that it would catch.
+Then show the user the map with one line per module: its label and, when step 3 had open issues, the issues it would catch.
 
 ## File format
 

@@ -127,7 +127,10 @@ impl ModuleMap {
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("reading module map {}", path.display()))?;
-        let dir = path.parent().unwrap_or(Path::new("."));
+        // Absolute, so a bare `.agentgraph.toml` has a real parent directory
+        // (and the root a folder name to default `project.name` to).
+        let abs = std::path::absolute(path)?;
+        let dir = abs.parent().unwrap_or(Path::new("/"));
         Self::parse(&text, dir).with_context(|| format!("in {}", path.display()))
     }
 }
