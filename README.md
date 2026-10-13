@@ -44,14 +44,23 @@ export OPENROUTER_API_KEY=sk-or-...
 
    ```sh
    agentgraph           # print once
-   agentgraph --watch   # redraw every 2s
+   agentgraph --watch   # interactive view, updated every 2s
    ```
+
+**The interactive view** (`--watch`) draws each module as a box holding its issues and the agents on them, joined by arrows that follow the data: for an edge `from = "server", to = "search"` the arrow runs Search ─▶ MCP server. Modules no agent is on are grayed out, not hidden. Issues not placed in a module and agents with no issue sit in boxes underneath.
+
+| Key | |
+|---|---|
+| `↑` `↓` / `k` `j` | Select an agent; the view scrolls to it. |
+| `Enter` | Focus the selected agent's pane in herdr. |
+| `PgUp` `PgDn` | Scroll a map taller than the screen. |
+| `q` / `Esc` | Quit. |
 
 | Flag | |
 |---|---|
 | `--map FILE` | Module map. Default: nearest `.agentgraph.toml` walking up from the cwd. |
 | `--root DIR` | Overrides `project.root` from the map. |
-| `--watch`, `--interval S` | Redraw continuously. |
+| `--watch`, `--interval S` | Open the interactive view, updated every S seconds (default 2). Needs a terminal. |
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
@@ -125,4 +134,4 @@ cargo run -- --map examples/urbandocs.agentgraph.toml
 - Later: several modules per issue, unclaimed issues without labels, a classifier for agent → issue, and `agentgraph eval` replaying merged PRs.
 - `agentgraph init`: an LLM agent proposes the first module map.
 - Transcript reading for files an agent has read but not changed.
-- An interactive ratatui view (Enter → `agent.focus`), the herdr socket and `events.subscribe`, packaging as a herdr plugin.
+- The herdr socket and `events.subscribe`, packaging as a herdr plugin.

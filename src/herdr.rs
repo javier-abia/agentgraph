@@ -63,6 +63,21 @@ pub fn fetch_agents(file: Option<&Path>) -> Result<Vec<Agent>> {
     parse_snapshot(&json)
 }
 
+/// Switches herdr to the agent in `pane`.
+pub fn focus_agent(pane: &str) -> Result<()> {
+    let out = Command::new("herdr")
+        .args(["agent", "focus", pane])
+        .output()
+        .context("running `herdr agent focus` (is herdr installed?)")?;
+    if !out.status.success() {
+        bail!(
+            "`herdr agent focus` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

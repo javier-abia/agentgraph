@@ -142,6 +142,18 @@ pub fn build(world: &World) -> Graph {
     graph
 }
 
+/// The map's `[[edge]]`s as data flow, (upstream, downstream) indices into
+/// `ModuleMap::modules`: an edge `from = A, to = B` means A depends on B, so
+/// data flows from B into A.
+pub fn data_flow(map: &ModuleMap) -> Vec<(usize, usize)> {
+    // Edge endpoints are validated against module ids when the map loads.
+    let idx = |id: &str| map.modules.iter().position(|m| m.id == id);
+    map.edges
+        .iter()
+        .filter_map(|e| Some((idx(&e.to)?, idx(&e.from)?)))
+        .collect()
+}
+
 /// The issues to classify this tick: those a live project agent is on.
 /// Same linking as `build`, so these are exactly the issues it shows.
 pub fn issues_to_classify(world: &World) -> Vec<&Issue> {
@@ -542,6 +554,17 @@ mod tests {
             vec![],
         ));
         assert_eq!(g.unplaced_issues[0].parent.as_ref().unwrap().number, 86);
+    }
+
+    #[test]
+    fn data_flows_from_the_dependency_into_the_dependent() {
+        let map = ModuleMap::parse(
+            &format!("{MAP}\n[[edge]]\nfrom = \"server\"\nto = \"search\"\n"),
+            Path::new("/home/u/urbandocs"),
+        )
+        .unwrap();
+        // server depends on search: search (1) feeds the server (0).
+        assert_eq!(data_flow(&map), [(1, 0)]);
     }
 
     #[test]
