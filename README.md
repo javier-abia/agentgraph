@@ -1,23 +1,54 @@
 # agentgraph
 
-A terminal view of what your [herdr](https://herdr.dev) agents are doing: which **GitHub issue** each one is on, and which **modules** of the project those issues touch.
+A terminal view of what your [herdr](https://herdr.dev) agents are doing: which **GitHub issue** each one is on, and which **module** of the project each issue touches. Modules are drawn as a data-flow diagram, so you can see where agents' work meets.
 
 ```
-urbandocs · 2 agents (1 working) · 1 elsewhere
+ ◆ agentgraph urbandocs · 4 agents 2 working    updated 1s ago
 
- · MCP server  —
- · Scripts  —
- · Evals  —
+                                 ╭── PDF CONVERSION ──╮
+                                 │      no agents     │
+                                 ╰──────────┬─────────╯
+                                            │
+                                            ▼
+                             ╭── INGEST & CORPUS GATES ──╮
+                             │         no agents         │
+                             ╰─────────────┬─────────────╯
+                                           │
+                                           ▼
+                               ╭── SUBSTRATE LOADING ──╮
+                               │       no agents       │
+                               ╰───────────┬───────────╯
+                                           │
+                                           ▼
+                   ╔═══════════════ ● SEARCH & READ ════════════════╗
+                   ║ #63 Render the fidelity disclosure on r…  0.94 ║
+                   ║   ● codex w1:p2                                ║
+                   ║ #86 Cut token use in the normativa-sear…  0.83 ║
+                   ║   ● claude w1:p1                               ║
+                   ╚════════════════════════╤═══════════════════════╝
+                                            │
+                                            ▼
+                                 ╭──── MCP SERVER ────╮
+                                 │      no agents     │
+                                 ╰──────────┬─────────╯
+                 ╭──────────────────────────┤
+                 ▼                          ▼
+  ╭── DEPLOY & AGENT CLIENTS ──╮    ╭─────────────────── ○ EVALS ────────────────────╮
+  │          no agents         │    │ #94 Add a grep-over-PDFs baseline agent…  0.94 │
+  ╰────────────────────────────╯    │   ○ claude w2:p1 idle                          │
+                                    ╰────────────────────────────────────────────────╯
 
- ? Not placed in a module
-     #107 Prototype delegating search→get to a Codex subagent, verbatim-output-first
-       ● codex w2:p1 ⎇ prototype-delegating-search-get-to-a-codex-subag (title match)
+                ╭── RESEARCH & EVIDENCE ──╮    ╭── DEV TOOLING & CI ──╮
+                │        no agents        │    │       no agents      │
+                ╰─────────────────────────╯    ╰──────────────────────╯
 
- ? No issue
-     ○ claude w3:p6 ⎇ main "Fresh start" (idle)
+                            ╭───────── ○ NO ISSUE ─────────╮
+                            │   ○ claude w3:p1 ⎇ main idle │
+                            ╰──────────────────────────────╯
 
- depends on
-   Evals ─▶ MCP server
+ ● codex w1:p2  ⎇ 63-render-fidelity-disclosure  ·  #63 Render the fidelity disclosure on returned text
+
+ ↑↓ select   ⏎ focus agent   PgUp/PgDn scroll   q quit
 ```
 
 ## Installation
@@ -31,23 +62,23 @@ cargo install --path agentgraph
 
 To update, `git pull` in the clone and run `cargo install --path .` again.
 
-The issue classifier calls [OpenRouter](https://openrouter.ai), so set your key, for example in your shell profile:
+Issues are placed in modules by a classifier on [OpenRouter](https://openrouter.ai), so set your key. agentgraph reads its own variable, not `OPENROUTER_API_KEY`, so you can give it a separate key:
 
 ```sh
-export OPENROUTER_API_KEY=sk-or-...
+export AGENTGRAPH_OPENROUTER_API_KEY=sk-or-...
 ```
 
 ## Usage
 
-1. **Write a module map.** Each project needs a `.agentgraph.toml` at its root (see [Module map](#module-map)). The easiest way to get one is to have your coding agent write it: tell the agent, "Run `agentgraph --skill` and follow it to write this project's module map." The skill is bundled with the binary, so it matches your installed version's map format. To help agents find it later, for example when asked to split a module, add this line to the project's `AGENTS.md`: "To write or change `.agentgraph.toml`, run `agentgraph --skill`."
-2. **Run it** from anywhere inside the project, while your agents run in herdr:
+1. **Write a module map**, a `.agentgraph.toml` at the project root (see [Module map](#module-map)). Easiest: tell your coding agent, "Run `agentgraph --skill` and follow it to write this project's module map." The skill ships with the binary, so it matches your version. Adding "To write or change `.agentgraph.toml`, run `agentgraph --skill`." to the project's `AGENTS.md` helps agents find it later.
+2. **Run it** from anywhere inside the project while your agents run in herdr:
 
    ```sh
    agentgraph           # print once
-   agentgraph --watch   # interactive view, updated every 2s
+   agentgraph --watch   # interactive view
    ```
 
-**The interactive view** (`--watch`) draws each module as a box holding its issues and the agents on them, joined by arrows that follow the data: for an edge `from = "server", to = "search"` the arrow runs Search ─▶ MCP server. Modules no agent is on are grayed out, not hidden. Issues not placed in a module and agents with no issue sit in boxes underneath.
+In `--watch`, each module is a box holding its issues and the agents on them, with arrows following the data (for an edge `from = "server", to = "search"` the arrow runs Search ─▶ MCP server). Modules with no agent are grayed out. Issues not placed in a module and agents with no issue sit in boxes underneath.
 
 | Key | |
 |---|---|
@@ -60,13 +91,19 @@ export OPENROUTER_API_KEY=sk-or-...
 |---|---|
 | `--map FILE` | Module map. Default: nearest `.agentgraph.toml` walking up from the cwd. |
 | `--root DIR` | Overrides `project.root` from the map. |
-| `--watch`, `--interval S` | Open the interactive view, updated every S seconds (default 2). Needs a terminal. |
+| `--watch`, `--interval S` | Open the interactive view, refreshed every S seconds (default 2). Needs a terminal. |
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
 | `--skill` | Print the agent skill for writing a module map. |
 
-Without the key, or when OpenRouter can't be reached, the view still renders: when some agent's issue needs classifying, an error line such as `✗ OPENROUTER_API_KEY not set` or `✗ OpenRouter unreachable: …` goes on top, cached classifications are still used, and issues with nothing cached are listed under "Not placed in a module". Nothing about it is fatal, so `--watch` keeps running.
+### What a refresh costs
+
+Every refresh reads herdr for the live agents and `git` for each agent's branch. Both are local and free. GitHub issues and PRs are fetched at most once per `--github-ttl` (60s by default), not every refresh.
+
+The classifier is **not** called every refresh. Each issue's classification is cached in `~/.cache/agentgraph/<project>.json` (under `$XDG_CACHE_HOME` when set), and Jev is asked only about an issue that has no cached answer: one an agent has just started on, one edited on GitHub since, or every issue after a module's id, `label` or `description` changes or a module is added or removed. So OpenRouter tokens are spent once per new or changed issue, not once per tick. Editing `paths` does not reclassify. Delete the cache file to reclassify everything.
+
+Without a key, or when OpenRouter can't be reached, the view still renders with an error line on top (`✗ AGENTGRAPH_OPENROUTER_API_KEY not set`, `✗ OpenRouter unreachable: …`). Cached classifications are still used, and issues with nothing cached go under "Not placed in a module".
 
 ## Module map
 
@@ -87,30 +124,22 @@ from = "server"
 to = "search"   # server depends on search
 ```
 
-An edge reads "`from` depends on `to`": `to` produces something `from` reads, calls or loads, so data flows from `to` into `from`.
-
-Globs are relative to the root and work like `.gitignore`: `*` stays within one directory, `**` crosses directories.
-
-`project.ignore` is gone: a map that still has it fails to load with a message asking you to delete it.
+An edge reads "`from` depends on `to`": data flows from `to` into `from`. Globs are relative to the root and work like `.gitignore` (`*` stays within one directory, `**` crosses directories).
 
 ## How things get linked
 
-**Project membership.** An agent belongs to the project when its cwd is in a repo with the same git common directory. Worktrees outside the repo folder count.
+**Project.** An agent belongs to the project when its cwd is in a repo with the same git common directory, so worktrees outside the repo folder count.
 
 **Agent → issue**, from the agent's branch (never the default branch), first match wins:
 1. An issue number in the branch name: `fix-score-floor-104`, `user/42-add-thing`.
-2. A branch name that is the start of an open issue's title in branch form: `prototype-delegating-search-get-to-a-codex-subag` → #107.
+2. A branch name that starts an open issue's title in branch form: `prototype-delegating-search-get-to-a-codex-subag` → #107.
 3. An open PR from that branch that closes an issue.
 
-No match means the agent is listed under "No issue"; nothing guesses.
+With no match, the agent is listed under "No issue".
 
-**Issue → module.** No GitHub labels and no diffs are read. [Jev](https://openrouter.ai/docs/guides/community/jev) (`typesafe/jev-1.13` via OpenRouter) gets the issue's title and body (truncated to about 4k tokens) and one yes/no question per module, built from the module's `label` and `description`, or its `label` and `paths` when there is no description. Its probability of "yes" for each module is independent of the others. The issue goes under its most likely module when that probability reaches `min_confidence`, shown dimmed after the title. Otherwise it goes under "Not placed in a module" with `(best guess: <module> <p>)`. An issue with no classification (no key, or the request failed, with nothing cached) is unplaced with no guess.
+**Issue → module.** [Jev](https://openrouter.ai/docs/guides/community/jev) (`typesafe/jev-1.13`) reads the issue's title and body and answers one yes/no question per module, built from its `label` and `description` (or `paths` when there is no description). The issue goes under its most likely module when that probability reaches `min_confidence`, shown after the title. Otherwise it goes under "Not placed in a module" with its best guess. No labels or diffs are read.
 
-**Classification cache.** Classifications are saved in `~/.cache/agentgraph/<project>.json` (`$XDG_CACHE_HOME/agentgraph/` when that is set) and reused until the issue is edited (its `updatedAt` changes), a module's id, `label` or `description` changes, a module is added or removed, or the model changes. Editing `paths` does not reclassify, even for a module without a description. So Jev is called only for new or changed issues, and probabilities stay put between ticks. A corrupt or unreadable cache file counts as empty and is replaced on the next successful classification; delete it to reclassify everything.
-
-**What's shown.** Only live agents and the issues they are on. Issues with no agent are not shown. Sub-issues are grouped under their parent.
-
-Every link records its source and a confidence value: 1.0 for the agent → issue sources, the classifier's probability for issue → module.
+Only live agents and the issues they are on are shown. Sub-issues are grouped under their parent.
 
 ## Development
 
@@ -130,8 +159,7 @@ cargo run -- --map examples/urbandocs.agentgraph.toml
 
 ## Roadmap
 
-- **v2** ([#4](https://github.com/javier-abia/agentgraph/issues/4)): Jev places each live agent's issue in a module from its title, body and module descriptions, so no GitHub labels are needed. Labels, unclaimed issues and placement by diff are removed. The probability is shown in the graph.
-- Later: several modules per issue, unclaimed issues without labels, a classifier for agent → issue, and `agentgraph eval` replaying merged PRs.
+- Several modules per issue, unclaimed issues, a classifier for agent → issue, and `agentgraph eval` replaying merged PRs.
 - `agentgraph init`: an LLM agent proposes the first module map.
 - Transcript reading for files an agent has read but not changed.
 - The herdr socket and `events.subscribe`, packaging as a herdr plugin.

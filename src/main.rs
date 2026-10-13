@@ -313,6 +313,6 @@ mod tests {
         let mut errors = Vec::new();
         let c = classify(&w, &Jev::without_key(), &mut cache, None, &mut errors);
         assert_eq!(c.get(&102), Some(&cached));
-        assert_eq!(errors, ["OPENROUTER_API_KEY not set"]);
+        assert_eq!(errors, ["AGENTGRAPH_OPENROUTER_API_KEY not set"]);
     }
 }

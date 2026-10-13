@@ -355,9 +355,12 @@ mod tests {
             unplaced_issues: vec![issue_node(102, "Floor scores", None)],
             ..Default::default()
         };
-        let errors = ["OPENROUTER_API_KEY not set".to_string()];
+        let errors = ["AGENTGRAPH_OPENROUTER_API_KEY not set".to_string()];
         let out = render(&map, &graph, &errors, &[], &Style { color: false });
-        assert!(out.starts_with("✗ OPENROUTER_API_KEY not set\n"), "{out}");
+        assert!(
+            out.starts_with("✗ AGENTGRAPH_OPENROUTER_API_KEY not set\n"),
+            "{out}"
+        );
         assert!(out.contains("#102 Floor scores\n"), "{out}");
     }
 
