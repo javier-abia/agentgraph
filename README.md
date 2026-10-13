@@ -62,10 +62,10 @@ cargo install --path agentgraph
 
 To update, `git pull` in the clone and run `cargo install --path .` again.
 
-Issues are placed in modules by a classifier on [OpenRouter](https://openrouter.ai), so set your key:
+Issues are placed in modules by a classifier on [OpenRouter](https://openrouter.ai), so set your key. agentgraph reads its own variable, not `OPENROUTER_API_KEY`, so you can give it a separate key:
 
 ```sh
-export OPENROUTER_API_KEY=sk-or-...
+export AGENTGRAPH_OPENROUTER_API_KEY=sk-or-...
 ```
 
 ## Usage
@@ -103,7 +103,7 @@ Every refresh reads herdr for the live agents and `git` for each agent's branch.
 
 The classifier is **not** called every refresh. Each issue's classification is cached in `~/.cache/agentgraph/<project>.json` (under `$XDG_CACHE_HOME` when set), and Jev is asked only about an issue that has no cached answer: one an agent has just started on, one edited on GitHub since, or every issue after a module's id, `label` or `description` changes or a module is added or removed. So OpenRouter tokens are spent once per new or changed issue, not once per tick. Editing `paths` does not reclassify. Delete the cache file to reclassify everything.
 
-Without a key, or when OpenRouter can't be reached, the view still renders with an error line on top (`✗ OPENROUTER_API_KEY not set`, `✗ OpenRouter unreachable: …`). Cached classifications are still used, and issues with nothing cached go under "Not placed in a module".
+Without a key, or when OpenRouter can't be reached, the view still renders with an error line on top (`✗ AGENTGRAPH_OPENROUTER_API_KEY not set`, `✗ OpenRouter unreachable: …`). Cached classifications are still used, and issues with nothing cached go under "Not placed in a module".
 
 ## Module map
 
