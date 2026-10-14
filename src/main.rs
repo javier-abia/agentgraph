@@ -63,7 +63,7 @@ struct Args {
     snapshot: Option<PathBuf>,
 
     /// Show the made-up agents and issues in this TOML file instead of
-    /// reading herdr, GitHub and Jev (see examples/urbandocs.demo.toml).
+    /// reading herdr, GitHub and Jev (see examples/agentic-rag.demo.toml).
     #[arg(long, conflicts_with_all = ["root", "snapshot", "no_github"])]
     demo: Option<PathBuf>,
 

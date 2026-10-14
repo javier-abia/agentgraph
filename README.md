@@ -3,52 +3,39 @@
 A terminal view of what your [herdr](https://herdr.dev) agents are doing: which **GitHub issue** each one is on, and which **module** of the project each issue touches. Modules are drawn as a data-flow diagram, so you can see where agents' work meets.
 
 ```
- ◆ agentgraph urbandocs · 4 agents 2 working    updated 1s ago
+ ◆ agentgraph agentic-rag · 4 agents 3 working 1 blocked    updated 1s ago
 
-                                 ╭── PDF CONVERSION ──╮
-                                 │      no agents     │
-                                 ╰──────────┬─────────╯
-                                            │
-                                            ▼
-                             ╭── INGEST & CORPUS GATES ──╮
-                             │         no agents         │
-                             ╰─────────────┬─────────────╯
-                                           │
-                                           ▼
-                               ╭── SUBSTRATE LOADING ──╮
-                               │       no agents       │
-                               ╰───────────┬───────────╯
-                                           │
-                                           ▼
-                   ╔═══════════════ ● SEARCH & READ ════════════════╗
-                   ║ #63 Render the fidelity disclosure on r…  0.94 ║
-                   ║   ● codex w1:p2                                ║
-                   ║ #86 Cut token use in the normativa-sear…  0.83 ║
-                   ║   ● claude w1:p1                               ║
-                   ╚════════════════════════╤═══════════════════════╝
-                                            │
-                                            ▼
-                                 ╭──── MCP SERVER ────╮
-                                 │      no agents     │
-                                 ╰──────────┬─────────╯
-                 ╭──────────────────────────┤
-                 ▼                          ▼
-  ╭── DEPLOY & AGENT CLIENTS ──╮    ╭─────────────────── ○ EVALS ────────────────────╮
-  │          no agents         │    │ #94 Add a grep-over-PDFs baseline agent…  0.94 │
-  ╰────────────────────────────╯    │   ○ claude w2:p1 idle                          │
-                                    ╰────────────────────────────────────────────────╯
+                               ╔═════════════ ● INGEST ═════════════╗
+                               ║ #12 Split chunks at headings  0.91 ║
+                               ║   ● claude w1:p1                   ║
+                               ╚══════════════════╤═════════════════╝
+                                                  │
+                                                  ▼
+                                       ╭─── VECTOR INDEX ───╮
+                                       │      no agents     │
+                                       ╰──────────┬─────────╯
+                                                  │
+                                                  ▼
+                               ╭─────────── ● RETRIEVER ────────────╮
+                               │ #18 Rerank the top-k results  0.88 │
+                               │   ● codex w1:p2                    │
+                               ╰──────────────────┬─────────────────╯
+                                                  │
+                                                  ▼
+                            ╭──────────────── ! AGENT ─────────────────╮
+                            │ #21 Stop looping on empty searches  0.85 │
+                            │   ! claude w2:p1 blocked                 │
+                            ╰─────────────────────┬────────────────────╯
+                              ╭───────────────────┤
+                              ▼                   ▼
+                   ╭───── CHAT API ─────╮    ╭──────────── ● EVALS ─────────────╮
+                   │      no agents     │    │ #30 Score answer citations  0.86 │
+                   ╰────────────────────╯    │   ● opencode w2:p2               │
+                                             ╰──────────────────────────────────╯
 
-                ╭── RESEARCH & EVIDENCE ──╮    ╭── DEV TOOLING & CI ──╮
-                │        no agents        │    │       no agents      │
-                ╰─────────────────────────╯    ╰──────────────────────╯
+ ● claude w1:p1  ⎇ heading-chunks-12  ·  #12 Split chunks at headings
 
-                            ╭───────── ○ NO ISSUE ─────────╮
-                            │   ○ claude w3:p1 ⎇ main idle │
-                            ╰──────────────────────────────╯
-
- ● codex w1:p2  ⎇ 63-render-fidelity-disclosure  ·  #63 Render the fidelity disclosure on returned text
-
- ↑↓ select   ⏎ focus agent   PgUp/PgDn scroll   q quit
+ ↑↓ select   ⏎ focus agent   PgUp/PgDn scroll   v layout: stacked   e long arrows: trunks   q quit
 ```
 
 ## Installation
@@ -119,19 +106,19 @@ Without a key, or when OpenRouter can't be reached, the view still renders with 
 
 ```toml
 [project]
-name = "urbandocs"
-root = "~/Projects/Ayuntamiento/urbandocs"  # optional; defaults to the map's directory
+name = "agentic-rag"
+root = "~/Projects/agentic-rag"  # optional; defaults to the map's directory
 min_confidence = 0.5  # optional; the probability an issue's best module needs to place it
 
 [[module]]
-id = "search"
-label = "Search & read"
-description = "Query parsing, ranking, and resolving and reading cited documents."  # optional but recommended; what the classifier reads
-paths = ["src/urbandocs/search.py", "tests/unit/test_search.py"]  # include the module's tests
+id = "retriever"
+label = "Retriever"
+description = "Turning a query into the top-k chunks: embedding the query, searching the index and reranking the results."  # optional but recommended; what the classifier reads
+paths = ["src/rag/retriever.py", "tests/test_retriever.py"]  # include the module's tests
 
 [[edge]]
-from = "server"
-to = "search"   # server depends on search
+from = "agent"
+to = "retriever"   # agent depends on retriever
 ```
 
 An edge reads "`from` depends on `to`": data flows from `to` into `from`. Globs are relative to the root and work like `.gitignore` (`*` stays within one directory, `**` crosses directories).
@@ -161,16 +148,10 @@ git config core.hooksPath .githooks
 
 It runs the same checks as CI: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and `scripts/check-pure.sh`.
 
-Run from the checkout against the example map:
+Run from the checkout against the example map, with made-up agents and issues, which needs no herdr, GitHub or API key:
 
 ```sh
-cargo run -- --map examples/urbandocs.agentgraph.toml
-```
-
-Or with made-up agents and issues, which needs no herdr, GitHub or API key:
-
-```sh
-cargo run -- --map examples/urbandocs.agentgraph.toml --demo examples/urbandocs.demo.toml --watch
+cargo run -- --map examples/agentic-rag.agentgraph.toml --demo examples/agentic-rag.demo.toml --watch
 ```
 
 ## Roadmap

@@ -1,0 +1,53 @@
+# Made-up agents and issues for the agentic-rag example map, to show the view
+# without herdr, GitHub or an OpenRouter key:
+#
+#   cargo run -- --map examples/agentic-rag.agentgraph.toml \
+#     --demo examples/agentic-rag.demo.toml --watch
+#
+# A status list advances one entry per tick (every --interval seconds).
+
+[[issue]]
+number = 12
+title = "Split chunks at headings"
+module = "ingest"
+confidence = 0.91
+
+[[issue]]
+number = 18
+title = "Rerank the top-k results"
+module = "retriever"
+confidence = 0.88
+
+[[issue]]
+number = 21
+title = "Stop looping on empty searches"
+module = "agent"
+confidence = 0.85
+
+[[issue]]
+number = 30
+title = "Score answer citations"
+module = "evals"
+confidence = 0.86
+
+[[agent]]
+pane = "w1:p1"
+status = "working"
+branch = "heading-chunks-12"
+
+[[agent]]
+pane = "w1:p2"
+agent = "codex"
+status = ["working", "working", "working", "idle", "working"]
+branch = "rerank-18"
+
+[[agent]]
+pane = "w2:p1"
+status = ["blocked", "blocked", "working", "working", "working"]
+branch = "empty-search-loop-21"
+
+[[agent]]
+pane = "w2:p2"
+agent = "opencode"
+status = ["working", "working", "working", "done", "done"]
+branch = "citation-score-30"
