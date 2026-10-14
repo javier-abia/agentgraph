@@ -20,6 +20,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::graph::{Graph, LinkSource};
 use crate::herdr;
+pub use diagram::{Arrows, Modes, Placement};
 use diagram::{C_ACCENT, C_NUM, Entry, branch, dim, dot, entries};
 pub use flow::MapInfo;
 
@@ -43,6 +44,8 @@ struct App {
     scroll: u16,
     /// The selection moved since the last frame: scroll its box into view.
     follow: bool,
+    /// How the diagram is laid out; `v` and `e` switch it.
+    modes: Modes,
 }
 
 /// What a key asks the run loop to do.
@@ -53,7 +56,7 @@ enum Action {
 }
 
 impl App {
-    fn new(map: MapInfo) -> Self {
+    fn new(map: MapInfo, modes: Modes) -> Self {
         Self {
             map,
             graph: None,
@@ -64,13 +67,31 @@ impl App {
             status: String::new(),
             scroll: 0,
             follow: true,
+            modes,
         }
     }
 
     fn entries(&self) -> Vec<Entry<'_>> {
         self.graph
             .as_ref()
-            .map_or_else(Vec::new, |g| entries(&self.map, g))
+            .map_or_else(Vec::new, |g| entries(&self.map, g, self.modes.placement))
+    }
+
+    fn selected_pane(&self) -> Option<String> {
+        let es = self.entries();
+        Some(es.get(self.selected)?.agent.agent.pane_id.clone())
+    }
+
+    /// Selects the agent in `pane` again, wherever it now is in the order.
+    fn reselect(&mut self, pane: Option<String>) {
+        let es = self.entries();
+        if let Some(i) = es
+            .iter()
+            .position(|e| Some(&e.agent.agent.pane_id) == pane.as_ref())
+        {
+            self.selected = i;
+        }
+        self.follow = true;
     }
 
     fn update(&mut self, tick: Tick) {
@@ -101,6 +122,17 @@ impl App {
                 select(self, (self.selected + 1).min(n.saturating_sub(1)))
             }
             KeyCode::Char('k') | KeyCode::Up => select(self, self.selected.saturating_sub(1)),
+            // The boxes move: keep the selected agent on screen, and on the
+            // same agent, which may now come at another place in the order.
+            KeyCode::Char('v') => {
+                let pane = self.selected_pane();
+                self.modes.placement = self.modes.placement.next();
+                self.reselect(pane);
+            }
+            KeyCode::Char('e') => {
+                self.modes.arrows = self.modes.arrows.next();
+                self.follow = true;
+            }
             KeyCode::PageDown => self.scroll = self.scroll.saturating_add(PAGE),
             KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(PAGE),
             KeyCode::Enter => {
@@ -138,7 +170,7 @@ fn scroll_to(scroll: u16, view: u16, content: u16, follow: Option<Rect>) -> u16 
 
 /// Takes over the terminal until the user quits. `tick` runs on its own
 /// thread: it collects one graph and says how long to wait for the next.
-pub fn run<F>(map: MapInfo, mut tick: F) -> Result<()>
+pub fn run<F>(map: MapInfo, modes: Modes, mut tick: F) -> Result<()>
 where
     F: FnMut() -> (Tick, Duration) + Send + 'static,
 {
@@ -153,7 +185,7 @@ where
         }
     });
 
-    let mut app = App::new(map);
+    let mut app = App::new(map, modes);
     let mut terminal = ratatui::init();
     let result = (|| -> Result<()> {
         loop {
@@ -230,6 +262,13 @@ fn draw(f: &mut Frame, app: &mut App) {
             txt(" focus agent   "),
             key("PgUp/PgDn"),
             txt(" scroll   "),
+            key("v"),
+            Span::styled(format!(" layout: {}   ", app.modes.placement.name()), dim()),
+            key("e"),
+            Span::styled(
+                format!(" long arrows: {}   ", app.modes.arrows.name()),
+                dim(),
+            ),
             key("q"),
             txt(" quit"),
         ]),
@@ -283,9 +322,9 @@ fn header_line(app: &App) -> Line<'static> {
 fn draw_body(f: &mut Frame, area: Rect, app: &mut App) {
     let Some(g) = &app.graph else { return };
     let [canvas, info] = Layout::vertical([Constraint::Min(3), Constraint::Length(2)]).areas(area);
-    let es = entries(&app.map, g);
+    let es = entries(&app.map, g, app.modes.placement);
     let sel = es.get(app.selected);
-    let d = diagram::draw(&app.map, g, sel, canvas.width);
+    let d = diagram::draw(&app.map, g, sel, canvas.width, app.modes);
 
     let content = d.buf.area.height;
     let follow = if app.follow { d.selected } else { None };
@@ -354,10 +393,11 @@ fn selected_line(sel: Option<&Entry>) -> Line<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diagram::tests::{SERVER_READS_SEARCH, agent, busy_server, issue, map};
+    use crate::graph::ModuleNode;
+    use diagram::tests::{SERVER_READS_SEARCH, agent, busy_server, issue, map, map_of};
 
     fn app_with(g: Graph) -> App {
-        let mut app = App::new(map(SERVER_READS_SEARCH));
+        let mut app = App::new(map(SERVER_READS_SEARCH), Modes::default());
         app.update(Ok((g, vec![], vec![])));
         app
     }
@@ -447,6 +487,63 @@ mod tests {
         // Taller than the view: its top is shown.
         let tall = Rect::new(0, 20, 20, 15);
         assert_eq!(scroll_to(0, 10, 50, Some(tall)), 19);
+    }
+
+    #[test]
+    fn v_and_e_switch_the_placement_and_the_arrow_style() {
+        let mut app = three_agents();
+        assert_eq!(app.modes, Modes::default());
+        app.on_key(KeyCode::Char('v'));
+        assert_eq!(app.modes.placement, Placement::Chains);
+        app.on_key(KeyCode::Char('v'));
+        assert_eq!(app.modes.placement, Placement::Stacked);
+        app.on_key(KeyCode::Char('e'));
+        assert_eq!(app.modes.arrows, Arrows::Stubs);
+        app.on_key(KeyCode::Char('e'));
+        assert_eq!(app.modes.arrows, Arrows::Trunks);
+    }
+
+    /// a → b → c is a chain; x is fed by a alone and sits in b's layer.
+    /// One agent on each module: pa, pb, pc, px.
+    fn chain_with_a_side_module() -> App {
+        let m = map_of(&["a", "b", "c", "x"], &[("b", "a"), ("c", "b"), ("x", "a")]);
+        let g = Graph {
+            modules: ["pa", "pb", "pc", "px"]
+                .iter()
+                .enumerate()
+                .map(|(i, p)| ModuleNode {
+                    issues: vec![issue(i as u64 + 1, i, vec![agent(p, "working")])],
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let mut app = App::new(m, Modes::default());
+        app.update(Ok((g, vec![], vec![])));
+        app
+    }
+
+    fn panes(app: &App) -> Vec<String> {
+        app.entries()
+            .iter()
+            .map(|e| e.agent.agent.pane_id.clone())
+            .collect()
+    }
+
+    #[test]
+    fn under_chains_selection_follows_the_lines() {
+        let mut app = chain_with_a_side_module();
+        assert_eq!(panes(&app), ["pa", "pb", "px", "pc"]);
+        app.on_key(KeyCode::Char('v'));
+        assert_eq!(panes(&app), ["pa", "pb", "pc", "px"]);
+    }
+
+    #[test]
+    fn switching_the_placement_keeps_the_same_agent_selected() {
+        let mut app = chain_with_a_side_module();
+        app.selected = 3; // pc
+        app.on_key(KeyCode::Char('v'));
+        assert_eq!(app.selected, 2);
+        assert!(app.follow);
     }
 
     #[test]

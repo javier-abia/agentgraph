@@ -80,11 +80,18 @@ export AGENTGRAPH_OPENROUTER_API_KEY=sk-or-...
 
 In `--watch`, each module is a box holding its issues and the agents on them, with arrows following the data (for an edge `from = "server", to = "search"` the arrow runs Search ─▶ MCP server). Modules with no agent are grayed out. Issues not placed in a module and agents with no issue sit in boxes underneath.
 
+Two settings change how the diagram is laid out:
+
+- **Layout.** `stacked` (the default) puts each data-flow layer on a row of its own, so arrows always go down. `chains` lays a run of modules, each the only input of the next, sideways (`├───▶`), wrapping at the screen edge like text; other modules in the same layers share its lines.
+- **Long arrows**, which skip a row. `trunks` (the default) runs them down the left margin, one lane per source module branching off to each target. `stubs` leaves them out and names the sources on the target box's first line instead (`◂ ORM models`), lit when either end is selected.
+
 | Key | |
 |---|---|
 | `↑` `↓` / `k` `j` | Select an agent; the view scrolls to it. |
 | `Enter` | Focus the selected agent's pane in herdr. |
 | `PgUp` `PgDn` | Scroll a map taller than the screen. |
+| `v` | Switch the layout: stacked or chains. |
+| `e` | Switch how long arrows are drawn: trunks or stubs. |
 | `q` / `Esc` | Quit. |
 
 | Flag | |
@@ -92,6 +99,8 @@ In `--watch`, each module is a box holding its issues and the agents on them, wi
 | `--map FILE` | Module map. Default: nearest `.agentgraph.toml` walking up from the cwd. |
 | `--root DIR` | Overrides `project.root` from the map. |
 | `--watch`, `--interval S` | Open the interactive view, refreshed every S seconds (default 2). Needs a terminal. |
+| `--layout stacked\|chains` | Layout to start `--watch` in (default `stacked`). |
+| `--arrows trunks\|stubs` | How `--watch` starts drawing long arrows (default `trunks`). |
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |

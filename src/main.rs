@@ -48,6 +48,15 @@ struct Args {
     #[arg(long, default_value_t = 2.0)]
     interval: f64,
 
+    /// How watch mode places modules at the start; `v` switches it.
+    #[arg(long, value_enum, default_value_t)]
+    layout: tui::Placement,
+
+    /// How watch mode draws arrows that skip a row at the start; `e`
+    /// switches it.
+    #[arg(long, value_enum, default_value_t)]
+    arrows: tui::Arrows,
+
     /// Read agents from a saved `herdr api snapshot` JSON file instead of herdr.
     #[arg(long)]
     snapshot: Option<PathBuf>,
@@ -140,7 +149,11 @@ fn main() -> Result<()> {
 
     let map = tui::MapInfo::from(&collectors.world.map);
     let interval = Duration::from_secs_f64(args.interval);
-    tui::run(map, move || (collectors.tick(), interval))
+    let modes = tui::Modes {
+        placement: args.layout,
+        arrows: args.arrows,
+    };
+    tui::run(map, modes, move || (collectors.tick(), interval))
 }
 
 /// Everything a tick reads from, and the World it fills.
