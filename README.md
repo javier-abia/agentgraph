@@ -1,9 +1,9 @@
-# agentgraph
+# herdr-map
 
 A terminal view of what your [herdr](https://herdr.dev) agents are doing: which **GitHub issue** each one is on, and which **module** of the project each issue touches. Modules are drawn as a data-flow diagram, so you can see where agents' work meets.
 
 ```
- ◆ agentgraph agentic-rag · 4 agents 3 working 1 blocked    updated 1s ago
+ ◆ herdr-map agentic-rag · 4 agents 3 working 1 blocked    updated 1s ago
 
                                ╔═════════════ ● INGEST ═════════════╗
                                ║ #12 Split chunks at headings  0.91 ║
@@ -43,26 +43,26 @@ A terminal view of what your [herdr](https://herdr.dev) agents are doing: which 
 Needs Rust (stable), [herdr](https://herdr.dev), `git`, an authenticated `gh` (the `repo` permission is enough), and `curl` 8.3 or later.
 
 ```sh
-git clone git@github.com:javier-abia/agentgraph.git
-cargo install --path agentgraph
+git clone git@github.com:javier-abia/herdr-map.git
+cargo install --path herdr-map
 ```
 
 To update, `git pull` in the clone and run `cargo install --path .` again.
 
-Issues are placed in modules by a classifier on [OpenRouter](https://openrouter.ai), so set your key. agentgraph reads its own variable, not `OPENROUTER_API_KEY`, so you can give it a separate key:
+Issues are placed in modules by a classifier on [OpenRouter](https://openrouter.ai), so set your key. herdr-map reads its own variable, not `OPENROUTER_API_KEY`, so you can give it a separate key:
 
 ```sh
-export AGENTGRAPH_OPENROUTER_API_KEY=sk-or-...
+export HERDR_MAP_OPENROUTER_API_KEY=sk-or-...
 ```
 
 ## Usage
 
-1. **Write a module map**, a `.agentgraph.toml` at the project root (see [Module map](#module-map)). Easiest: tell your coding agent, "Run `agentgraph --skill` and follow it to write this project's module map." The skill ships with the binary, so it matches your version. Adding "To write or change `.agentgraph.toml`, run `agentgraph --skill`." to the project's `AGENTS.md` helps agents find it later.
+1. **Write a module map**, a `.herdr-map.toml` at the project root (see [Module map](#module-map)). Easiest: tell your coding agent, "Run `herdr-map --skill` and follow it to write this project's module map." The skill ships with the binary, so it matches your version. Adding "To write or change `.herdr-map.toml`, run `herdr-map --skill`." to the project's `AGENTS.md` helps agents find it later.
 2. **Run it** from anywhere inside the project while your agents run in herdr:
 
    ```sh
-   agentgraph           # print once
-   agentgraph --watch   # interactive view
+   herdr-map           # print once
+   herdr-map --watch   # interactive view
    ```
 
 In `--watch`, each module is a box holding its issues and the agents on them, with arrows following the data (for an edge `from = "server", to = "search"` the arrow runs Search ─▶ MCP server). Modules with no agent are grayed out. Issues not placed in a module and agents with no issue sit in boxes underneath.
@@ -83,7 +83,7 @@ Two settings change how the diagram is laid out:
 
 | Flag | |
 |---|---|
-| `--map FILE` | Module map. Default: nearest `.agentgraph.toml` walking up from the cwd. |
+| `--map FILE` | Module map. Default: nearest `.herdr-map.toml` walking up from the cwd. |
 | `--root DIR` | Overrides `project.root` from the map. |
 | `--watch`, `--interval S` | Open the interactive view, refreshed every S seconds (default 2). Needs a terminal. |
 | `--layout stacked\|chains` | Layout to start `--watch` in (default `stacked`). |
@@ -98,9 +98,9 @@ Two settings change how the diagram is laid out:
 
 Every refresh reads herdr for the live agents and `git` for each agent's branch. Both are local and free. GitHub issues and PRs are fetched at most once per `--github-ttl` (60s by default), not every refresh.
 
-The classifier is **not** called every refresh. Each issue's classification is cached in `~/.cache/agentgraph/<project>.json` (under `$XDG_CACHE_HOME` when set), and Jev is asked only about an issue that has no cached answer: one an agent has just started on, one edited on GitHub since, or every issue after a module's id, `label` or `description` changes or a module is added or removed. So OpenRouter tokens are spent once per new or changed issue, not once per tick. Editing `paths` does not reclassify. Delete the cache file to reclassify everything.
+The classifier is **not** called every refresh. Each issue's classification is cached in `~/.cache/herdr-map/<project>.json` (under `$XDG_CACHE_HOME` when set), and Jev is asked only about an issue that has no cached answer: one an agent has just started on, one edited on GitHub since, or every issue after a module's id, `label` or `description` changes or a module is added or removed. So OpenRouter tokens are spent once per new or changed issue, not once per tick. Editing `paths` does not reclassify. Delete the cache file to reclassify everything.
 
-Without a key, or when OpenRouter can't be reached, the view still renders with an error line on top (`✗ AGENTGRAPH_OPENROUTER_API_KEY not set`, `✗ OpenRouter unreachable: …`). Cached classifications are still used, and issues with nothing cached go under "Not placed in a module".
+Without a key, or when OpenRouter can't be reached, the view still renders with an error line on top (`✗ HERDR_MAP_OPENROUTER_API_KEY not set`, `✗ OpenRouter unreachable: …`). Cached classifications are still used, and issues with nothing cached go under "Not placed in a module".
 
 ## Module map
 
@@ -151,12 +151,12 @@ It runs the same checks as CI: `cargo fmt --check`, `cargo clippy --all-targets 
 Run from the checkout against the example map, with made-up agents and issues, which needs no herdr, GitHub or API key:
 
 ```sh
-cargo run -- --map examples/agentic-rag.agentgraph.toml --demo examples/agentic-rag.demo.toml --watch
+cargo run -- --map examples/agentic-rag.herdr-map.toml --demo examples/agentic-rag.demo.toml --watch
 ```
 
 ## Roadmap
 
-- Several modules per issue, unclaimed issues, a classifier for agent → issue, and `agentgraph eval` replaying merged PRs.
-- `agentgraph init`: an LLM agent proposes the first module map.
+- Several modules per issue, unclaimed issues, a classifier for agent → issue, and `herdr-map eval` replaying merged PRs.
+- `herdr-map init`: an LLM agent proposes the first module map.
 - Transcript reading for files an agent has read but not changed.
 - The herdr socket and `events.subscribe`, packaging as a herdr plugin.

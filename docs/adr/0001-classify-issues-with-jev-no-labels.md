@@ -1,6 +1,6 @@
 # Classify issues into modules with Jev, without GitHub labels
 
-v1 placed an issue in a module from `module:<id>` labels or from its branch diff, and listed `ready-for-agent` issues as unclaimed. Those conventions tie agentgraph to repos that adopt them, and diffs say nothing until code exists. From v2, each issue a live agent is on is placed only by Jev (`typesafe/jev-1.13` via OpenRouter), using the issue's title and body and the module map's descriptions. No labels and no diffs are used, and only live agents and their issues are shown.
+v1 placed an issue in a module from `module:<id>` labels or from its branch diff, and listed `ready-for-agent` issues as unclaimed. Those conventions tie herdr-map to repos that adopt them, and diffs say nothing until code exists. From v2, each issue a live agent is on is placed only by Jev (`typesafe/jev-1.13` via OpenRouter), using the issue's title and body and the module map's descriptions. No labels and no diffs are used, and only live agents and their issues are shown.
 
 ## Considered options
 

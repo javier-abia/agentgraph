@@ -28,10 +28,10 @@ use world::{AgentFacts, Classification, World};
 #[derive(Parser)]
 #[command(
     version,
-    after_help = "Are you an AI asked to write or change a module map (.agentgraph.toml)?\n  Run: agentgraph --skill"
+    after_help = "Are you an AI asked to write or change a module map (.herdr-map.toml)?\n  Run: herdr-map --skill"
 )]
 struct Args {
-    /// Module map to use. Defaults to the nearest `.agentgraph.toml`
+    /// Module map to use. Defaults to the nearest `.herdr-map.toml`
     /// found walking up from the current directory.
     #[arg(long)]
     map: Option<PathBuf>,
@@ -86,7 +86,7 @@ struct Args {
 }
 
 /// Bundled so the instructions always match this binary's map format.
-const SKILL: &str = include_str!("../skills/agentgraph-map/SKILL.md");
+const SKILL: &str = include_str!("../skills/herdr-map-skill/SKILL.md");
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -349,6 +349,6 @@ mod tests {
         let mut errors = Vec::new();
         let c = classify(&w, &Jev::without_key(), &mut cache, None, &mut errors);
         assert_eq!(c.get(&102), Some(&cached));
-        assert_eq!(errors, ["AGENTGRAPH_OPENROUTER_API_KEY not set"]);
+        assert_eq!(errors, ["HERDR_MAP_OPENROUTER_API_KEY not set"]);
     }
 }

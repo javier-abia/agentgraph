@@ -1,4 +1,4 @@
-//! The on-disk classification cache, `~/.cache/agentgraph/<project>.json`.
+//! The on-disk classification cache, `~/.cache/herdr-map/<project>.json`.
 //! An issue's classification is reused until its key changes: the issue
 //! number, its `updatedAt`, a hash of the module ids, labels and descriptions,
 //! and the model slug. Path globs are not part of the key.
@@ -67,8 +67,8 @@ impl Cache {
     }
 }
 
-/// `$XDG_CACHE_HOME/agentgraph/<project>.json`, else
-/// `~/.cache/agentgraph/<project>.json`. None with neither variable set.
+/// `$XDG_CACHE_HOME/herdr-map/<project>.json`, else
+/// `~/.cache/herdr-map/<project>.json`. None with neither variable set.
 pub fn path(project: &str) -> Option<PathBuf> {
     let env = |var| std::env::var_os(var).filter(|v| !v.is_empty());
     let base = env("XDG_CACHE_HOME")
@@ -79,7 +79,7 @@ pub fn path(project: &str) -> Option<PathBuf> {
         .chars()
         .map(|c| if c == '/' || c == '\\' { '_' } else { c })
         .collect();
-    Some(base.join("agentgraph").join(format!("{file}.json")))
+    Some(base.join("herdr-map").join(format!("{file}.json")))
 }
 
 /// What an issue's classification was made under. The issue number picks the

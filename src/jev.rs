@@ -18,7 +18,7 @@ use crate::world::{Classification, Issue};
 pub const MODEL: &str = "typesafe/jev-1.13";
 
 const URL: &str = "https://openrouter.ai/api/alpha/decisions";
-const KEY_VAR: &str = "AGENTGRAPH_OPENROUTER_API_KEY";
+const KEY_VAR: &str = "HERDR_MAP_OPENROUTER_API_KEY";
 
 /// About 4k tokens of issue body, at roughly 4 characters per token.
 const MAX_BODY_CHARS: usize = 16_000;
@@ -331,7 +331,7 @@ mod tests {
         assert!(classified.classifications.is_empty());
         assert_eq!(
             classified.failure.map(|f| f.to_string()).as_deref(),
-            Some("AGENTGRAPH_OPENROUTER_API_KEY not set")
+            Some("HERDR_MAP_OPENROUTER_API_KEY not set")
         );
     }
 

@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues live as GitHub issues on `javier-abia/agentgraph` (via the `gh` CLI). External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+Issues live as GitHub issues on `javier-abia/herdr-map` (via the `gh` CLI). External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
