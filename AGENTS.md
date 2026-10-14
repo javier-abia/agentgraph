@@ -17,3 +17,7 @@ Single-context layout (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agent
 ### herdr API reference
 
 Use the docs bundled with the installed herdr (`herdr --version`), which match it exactly: `herdr --skill` for CLI usage, `herdr api schema --json` (or `--output FILE`) for the socket API schema (agents, `events.subscribe`, plugins).
+
+### Attribution
+
+End PR descriptions, commit messages, issues, and comments with their own content; the `🤖 Generated with Claude Code` footer and the `Co-Authored-By: Claude` trailer go nowhere in this repo.
