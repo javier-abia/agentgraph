@@ -79,6 +79,137 @@ pub fn layers(map: &MapInfo) -> Vec<Vec<usize>> {
     layers
 }
 
+/// Rows of module indices like `layers`, with chains kept together. A chain
+/// is a run of modules each the only upstream of the next, drawn sideways.
+///
+/// Each chain is laid out as one node, so a chain sits in one row even when
+/// other modules share the layers its members would have had. A row holds
+/// its single modules first, then each chain's members in order.
+pub fn chain_rows(map: &MapInfo) -> Vec<Vec<usize>> {
+    let n = map.labels.len();
+    let chains = chains(map);
+    let mut group = vec![0; n];
+    for (c, chain) in chains.iter().enumerate() {
+        chain.iter().for_each(|&m| group[m] = c);
+    }
+    // A chain's own edges become a self-edge, which keeps it connected.
+    let mut flow: Vec<(usize, usize)> = map
+        .flow
+        .iter()
+        .map(|&(a, b)| (group[a], group[b]))
+        .collect();
+    flow.sort();
+    flow.dedup();
+    let contracted = MapInfo {
+        name: String::new(),
+        labels: vec![String::new(); chains.len()],
+        flow,
+    };
+    layers(&contracted)
+        .into_iter()
+        .map(|layer| {
+            let (singles, runs): (Vec<usize>, Vec<usize>) =
+                layer.into_iter().partition(|&c| chains[c].len() == 1);
+            singles
+                .into_iter()
+                .chain(runs)
+                .flat_map(|c| chains[c].iter().copied())
+                .collect()
+        })
+        .collect()
+}
+
+/// Every module in exactly one chain (most of length one), numbered by
+/// their smallest module, so a cycle is broken where `layers` breaks it.
+fn chains(map: &MapInfo) -> Vec<Vec<usize>> {
+    let n = map.labels.len();
+    let next = successors(map);
+    let mut has_prev = vec![false; n];
+    next.iter().flatten().for_each(|&b| has_prev[b] = true);
+
+    let mut placed = vec![false; n];
+    let mut chains: Vec<Vec<usize>> = Vec::new();
+    // Chains start where nothing leads in; what is left is cycles.
+    let starts = (0..n).filter(|&m| !has_prev[m]).chain(0..n);
+    for start in starts {
+        let mut chain = Vec::new();
+        let mut m = Some(start);
+        while let Some(x) = m.filter(|&x| !placed[x]) {
+            placed[x] = true;
+            chain.push(x);
+            m = next[x];
+        }
+        if !chain.is_empty() {
+            chains.push(chain);
+        }
+    }
+    chains.sort_by_key(|c| c.iter().min().copied());
+    chains
+}
+
+/// Each module's place in a chain: the module that comes after it, if any.
+///
+/// The candidates after `a` are the modules `a` alone feeds. One candidate
+/// follows it, unless it is a dead end and `a` feeds other modules too;
+/// of several, only one with a strictly longest chain after it does.
+fn successors(map: &MapInfo) -> Vec<Option<usize>> {
+    let n = map.labels.len();
+    let sole_up = |b: usize| {
+        let mut ups: Vec<usize> = map
+            .flow
+            .iter()
+            .filter(|&&(up, down)| down == b && up != b)
+            .map(|&(up, _)| up)
+            .collect();
+        ups.sort();
+        ups.dedup();
+        match ups[..] {
+            [up] => Some(up),
+            _ => None,
+        }
+    };
+    let mut cands: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for b in 0..n {
+        if let Some(a) = sole_up(b) {
+            cands[a].push(b);
+        }
+    }
+    /// The most modules that can follow `m` in a chain, never revisiting one.
+    fn tail(m: usize, cands: &[Vec<usize>], seen: &mut [bool]) -> usize {
+        seen[m] = true;
+        let mut t = 0;
+        for &b in &cands[m] {
+            if !seen[b] {
+                t = t.max(1 + tail(b, cands, seen));
+            }
+        }
+        seen[m] = false;
+        t
+    }
+
+    (0..n)
+        .map(|a| {
+            let mut seen = vec![false; n];
+            seen[a] = true;
+            let mut tails: Vec<(usize, usize)> = cands[a]
+                .iter()
+                .map(|&b| (tail(b, &cands, &mut seen), b))
+                .collect();
+            tails.sort_by_key(|&(t, _)| std::cmp::Reverse(t));
+            let feeds_others = map
+                .flow
+                .iter()
+                .any(|&(up, down)| up == a && down != a && !cands[a].contains(&down));
+            match tails[..] {
+                [(0, _)] if feeds_others => None,
+                [(_, b)] => Some(b),
+                [(t0, b), (t1, _), ..] if t0 > t1 => Some(b),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 /// The flow edges minus those that close a cycle (and self-edges): the
 /// back edges of a depth-first walk from each module in map order.
 fn acyclic(n: usize, flow: &[(usize, usize)]) -> Vec<(usize, usize)> {
@@ -179,6 +310,80 @@ mod tests {
     fn a_cycle_still_places_every_module_once() {
         let m = info(&["a", "b", "c"], &[("a", "b"), ("b", "a"), ("c", "a")]);
         let mut all = layers(&m).concat();
+        all.sort();
+        assert_eq!(all, [0, 1, 2]);
+    }
+
+    /// A compiler: a ten-stage pipeline, with lints and a formatter off it,
+    /// diagnostics and a language server reading several stages, and a
+    /// standard library with no edges.
+    fn compiler() -> MapInfo {
+        info(
+            &[
+                "lexer", "parser", "ast", "resolve", "types", "borrow", "ir", "opt", "codegen",
+                "link", "diag", "lints", "lsp", "fmt", "std",
+            ],
+            &[
+                ("parser", "lexer"),
+                ("ast", "parser"),
+                ("resolve", "ast"),
+                ("types", "resolve"),
+                ("borrow", "types"),
+                ("ir", "borrow"),
+                ("opt", "ir"),
+                ("codegen", "opt"),
+                ("link", "codegen"),
+                ("lints", "types"),
+                ("fmt", "ast"),
+                ("diag", "parser"),
+                ("diag", "types"),
+                ("diag", "borrow"),
+                ("diag", "lints"),
+                ("lsp", "diag"),
+                ("lsp", "types"),
+            ],
+        )
+    }
+
+    #[test]
+    fn a_pipeline_with_side_modules_in_its_layers_forms_one_chain() {
+        let rows = chain_rows(&compiler());
+        assert_eq!(
+            rows,
+            [
+                (0..10).collect::<Vec<_>>(),
+                vec![11, 13],
+                vec![10],
+                vec![12],
+                vec![14]
+            ]
+        );
+    }
+
+    #[test]
+    fn a_chain_stops_at_a_fork_into_equally_long_branches() {
+        // server feeds deploy and evals, each a dead end.
+        let m = info(
+            &["server", "deploy", "evals"],
+            &[("deploy", "server"), ("evals", "server")],
+        );
+        assert_eq!(chain_rows(&m), [vec![0], vec![1, 2]]);
+    }
+
+    #[test]
+    fn a_dead_end_is_not_chained_onto_a_module_that_feeds_others() {
+        // mobile reads only the api; web reads the api and a design system.
+        let m = info(
+            &["api", "web", "ds", "mobile"],
+            &[("web", "api"), ("web", "ds"), ("mobile", "api")],
+        );
+        assert_eq!(chain_rows(&m), layers(&m));
+    }
+
+    #[test]
+    fn a_cycle_still_places_every_module_once_in_chains() {
+        let m = info(&["a", "b", "c"], &[("a", "b"), ("b", "a"), ("c", "a")]);
+        let mut all = chain_rows(&m).concat();
         all.sort();
         assert_eq!(all, [0, 1, 2]);
     }

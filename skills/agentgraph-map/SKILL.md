@@ -52,15 +52,15 @@ Done when every glob matches at least one tracked file. Check each one with `git
 
 An edge reads "`from` depends on `to`": `to` produces something `from` reads, calls or loads. Data flows from `to` into `from`, and the interactive view draws the arrow that way. For each pair, ask which one consumes the other's output. That one is `from`.
 
-From the urbandocs map:
+From an agentic RAG map:
 
 ```toml
 [[edge]]
-from = "server"     # the server calls search
-to = "search"
+from = "agent"      # the agent calls the retriever
+to = "retriever"
 
 [[edge]]
-from = "substrate"  # substrate loads the corpus ingest writes
+from = "index"      # the index stores the embeddings ingest writes
 to = "ingest"
 ```
 
@@ -87,19 +87,19 @@ The file lives at the project root as `.agentgraph.toml`.
 
 ```toml
 [project]
-name = "urbandocs"       # optional; defaults to the root folder's name
+name = "agentic-rag"     # optional; defaults to the root folder's name
 # root = "~/path/to/repo"  # only when the file lives outside the repo
 # min_confidence = 0.5     # probability an issue's best module needs; keep the default
 
 [[module]]
-id = "search"
-label = "Search & read"
-description = "The retrieval operations: sweeping and ranking sections for search, resolving printed cites to addresses, and reading provision text, ancestors, children and pages."
-paths = ["src/urbandocs/search.py", "src/urbandocs/resolve.py", "tests/unit/test_search.py"]
+id = "retriever"
+label = "Retriever"
+description = "Turning a query into the top-k chunks: embedding the query, searching the vector index, and reranking the results by relevance."
+paths = ["src/rag/retriever.py", "src/rag/rerank.py", "tests/test_retriever.py"]
 
 [[edge]]
-from = "server"
-to = "search"
+from = "agent"
+to = "retriever"
 ```
 
 Unknown keys fail to load, and so does `project.ignore`, which was removed.

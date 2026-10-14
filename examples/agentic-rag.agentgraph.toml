@@ -1,0 +1,65 @@
+# Module map for a small agentic RAG service, made up to show the view. Run it
+# with the made-up agents in agentic-rag.demo.toml (see the README).
+
+[project]
+name = "agentic-rag"
+
+# Each module lists its tests too, as part of the module they exercise.
+
+[[module]]
+id = "ingest"
+label = "Ingest"
+description = "Loading the source documents, splitting them into chunks and embedding each chunk."
+paths = ["src/rag/ingest/**", "tests/test_ingest.py"]
+
+[[module]]
+id = "index"
+label = "Vector index"
+description = "The vector store the chunk embeddings are written to and searched in."
+paths = ["src/rag/index.py", "tests/test_index.py"]
+
+[[module]]
+id = "retriever"
+label = "Retriever"
+description = "Turning a query into the top-k chunks: embedding the query, searching the index and reranking the results."
+paths = ["src/rag/retriever.py", "tests/test_retriever.py"]
+
+[[module]]
+id = "agent"
+label = "Agent"
+description = "The tool-calling loop: the model, its prompt, and deciding when to search again and when to answer."
+paths = ["src/rag/agent/**", "tests/test_agent.py"]
+
+[[module]]
+id = "api"
+label = "Chat API"
+description = "The HTTP endpoint users chat through, streaming the agent's answers."
+paths = ["src/rag/api.py", "tests/test_api.py"]
+
+[[module]]
+id = "evals"
+label = "Evals"
+description = "The gold question set, the judge that grades the agent's answers, and the pass rate."
+paths = ["evals/**"]
+
+# An edge reads "`from` depends on `to`".
+
+[[edge]]
+from = "index"
+to = "ingest"
+
+[[edge]]
+from = "retriever"
+to = "index"
+
+[[edge]]
+from = "agent"
+to = "retriever"
+
+[[edge]]
+from = "api"
+to = "agent"
+
+[[edge]]
+from = "evals"
+to = "agent"
