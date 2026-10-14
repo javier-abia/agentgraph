@@ -7,6 +7,8 @@ root = "~/Projects/Ayuntamiento/urbandocs"
 
 # Each module lists its tests too, as part of the module they exercise.
 
+# --- Serving: the MCP tools and the operations behind them ---
+
 [[module]]
 id = "server"
 label = "MCP server"
@@ -15,18 +17,21 @@ paths = ["src/urbandocs/server.py", "tests/unit/test_server.py"]
 
 [[module]]
 id = "search"
-label = "Search & read"
-description = "The retrieval operations: sweeping and ranking sections for search, resolving printed cites to addresses, and reading provision text, ancestors, children and pages."
-paths = [
-  "src/urbandocs/search.py",
-  "src/urbandocs/resolve.py",
-  "src/urbandocs/read.py",
-  "tests/unit/test_search.py",
-  "tests/unit/test_resolve.py",
-  "tests/unit/test_read.py",
-  "tests/unit/test_cite_path.py",
-  "tests/unit/test_parse_cite.py",
-]
+label = "Search"
+description = "Sweeping and ranking sections for a free-text query: normalization, scoring, the result cap and the shape of the ranked results."
+paths = ["src/urbandocs/search.py", "tests/unit/test_search.py"]
+
+[[module]]
+id = "cites"
+label = "Cite resolution"
+description = "Resolving a printed cite such as 'art. 4.2' to the provisions it can address, with candidates when it is ambiguous."
+paths = ["src/urbandocs/resolve.py", "tests/unit/test_resolve.py"]
+
+[[module]]
+id = "read"
+label = "Read"
+description = "Reading provision text by id: the provision with its ancestors and children, whole pages, and the fidelity disclosure on what is returned."
+paths = ["src/urbandocs/read.py", "tests/unit/test_read.py"]
 
 [[module]]
 id = "substrate"
@@ -39,44 +44,96 @@ paths = [
   "tests/unit/test_paths.py",
 ]
 
+# --- Building the corpus from the PDFs ---
+
+[[module]]
+id = "convert"
+label = "PDF conversion"
+description = "Stage 1: the docling-convert tool that turns the normativa PDFs into docling JSON, with its OCR and layout settings, and the source documents themselves."
+paths = ["tools/docling-convert/**", "documentos/**"]
+
 [[module]]
 id = "ingest"
 label = "Ingest & corpus"
-description = "Turning the normativa PDFs into corpus.tsv: docling conversion, the ingest stage, corpus and structure checks, and the extraction fidelity of the documents."
+description = "Stage 2: docling JSON to corpus.tsv. Section structure, list markers, cite paths, provenance, and the committed corpus."
 paths = [
   "src/urbandocs/ingest.py",
-  "src/urbandocs/check_*.py",
   "corpus/**",
-  "documentos/**",
-  "tools/docling-convert/**",
-  "tests/fixtures/**",
-  "tests/unit/test_fixture_corpus.py",
+  "tests/unit/test_cite_path.py",
+  "tests/unit/test_parse_cite.py",
 ]
 
 [[module]]
-id = "scripts"
-label = "Scripts"
-description = "Frozen one-off scripts kept as evidence for past measurements; not maintained and not imported by anything."
-paths = ["scripts/**"]
+id = "checks"
+label = "Corpus checks"
+description = "The corpus and structure checks run against a built corpus: coverage, ordering, and that every section parses back to its cite."
+paths = ["src/urbandocs/check_*.py"]
 
 [[module]]
-id = "evals"
-label = "Evals"
-description = "The end-to-end eval harness: an agent answers the gold question set through the real MCP tools, a second model grades it, and runs are tracked in Langfuse."
-paths = ["evals/**"]
+id = "fixtures"
+label = "Test fixtures"
+description = "The small fixture corpus the unit tests load, and the script that regenerates it through the real ingest."
+paths = ["tests/fixtures/**", "tests/conftest.py", "tests/unit/test_fixture_corpus.py"]
+
+# --- Evals: an agent answers the gold set through the MCP tools ---
+
+[[module]]
+id = "eval-agent"
+label = "Eval agent"
+description = "The agent under evaluation: its model, prompt and usage limits, answering a question through the real MCP tools."
+paths = ["evals/src/urbandocs_evals/agent.py", "evals/src/urbandocs_evals/config.py", "evals/tests/test_config.py"]
+
+[[module]]
+id = "judge"
+label = "Judge"
+description = "The grading model: the judge prompt, the verdict schema, and how an answer is compared against the gold answer."
+paths = ["evals/src/urbandocs_evals/judge.py", "evals/tests/test_judge.py"]
+
+[[module]]
+id = "eval-runs"
+label = "Eval runs"
+description = "Running an experiment over the gold question set and tracking it in Langfuse: the CLI, the dataset upload, scores and pass rate."
+paths = [
+  "evals/src/urbandocs_evals/run.py",
+  "evals/src/urbandocs_evals/cli.py",
+  "evals/src/urbandocs_evals/dataset.py",
+  "evals/tests/test_run.py",
+  "evals/tests/test_dataset.py",
+  "docs/eval-*.csv",
+]
+
+# --- Outside the code ---
 
 [[module]]
 id = "research"
 label = "Research"
-description = "Written research notes: investigations, benchmarks and prototypes that inform design decisions, rather than code changes."
-paths = ["docs/research/**"]
+description = "Written research notes: investigations, benchmarks and prototypes that inform design decisions, and the frozen one-off scripts kept as evidence for their measurements."
+paths = ["docs/research/**", "scripts/**"]
+
+# An edge reads "`from` depends on `to`".
 
 [[edge]]
 from = "server"
 to = "search"
 
 [[edge]]
+from = "server"
+to = "cites"
+
+[[edge]]
+from = "server"
+to = "read"
+
+[[edge]]
 from = "search"
+to = "substrate"
+
+[[edge]]
+from = "cites"
+to = "substrate"
+
+[[edge]]
+from = "read"
 to = "substrate"
 
 [[edge]]
@@ -84,5 +141,29 @@ from = "substrate"
 to = "ingest"
 
 [[edge]]
-from = "evals"
+from = "ingest"
+to = "convert"
+
+[[edge]]
+from = "checks"
+to = "ingest"
+
+[[edge]]
+from = "fixtures"
+to = "ingest"
+
+[[edge]]
+from = "eval-agent"
 to = "server"
+
+[[edge]]
+from = "judge"
+to = "eval-agent"
+
+[[edge]]
+from = "eval-runs"
+to = "eval-agent"
+
+[[edge]]
+from = "eval-runs"
+to = "judge"
