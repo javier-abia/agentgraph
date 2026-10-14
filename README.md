@@ -104,6 +104,7 @@ Two settings change how the diagram is laid out:
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
+| `--demo FILE` | Show the made-up agents and issues in a TOML file instead of reading herdr, GitHub and Jev. |
 | `--skill` | Print the agent skill for writing a module map. |
 
 ### What a refresh costs
@@ -164,6 +165,12 @@ Run from the checkout against the example map:
 
 ```sh
 cargo run -- --map examples/urbandocs.agentgraph.toml
+```
+
+Or with made-up agents and issues, which needs no herdr, GitHub or API key:
+
+```sh
+cargo run -- --map examples/urbandocs.agentgraph.toml --demo examples/urbandocs.demo.toml --watch
 ```
 
 ## Roadmap

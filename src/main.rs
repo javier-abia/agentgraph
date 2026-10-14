@@ -1,4 +1,5 @@
 mod cache;
+mod demo;
 mod git;
 mod github;
 mod graph;
@@ -61,6 +62,11 @@ struct Args {
     #[arg(long)]
     snapshot: Option<PathBuf>,
 
+    /// Show the made-up agents and issues in this TOML file instead of
+    /// reading herdr, GitHub and Jev (see examples/urbandocs.demo.toml).
+    #[arg(long, conflicts_with_all = ["root", "snapshot", "no_github"])]
+    demo: Option<PathBuf>,
+
     /// Seconds to cache GitHub issues and PRs between refreshes.
     #[arg(long, default_value_t = 60)]
     github_ttl: u64,
@@ -103,6 +109,32 @@ fn main() -> Result<()> {
         }
     };
     let mut map = ModuleMap::load(&map_path)?;
+    if args.watch && !std::io::stdout().is_terminal() {
+        bail!("--watch needs a terminal; leave it out to print once");
+    }
+    let modes = tui::Modes {
+        placement: args.layout,
+        arrows: args.arrows,
+    };
+    let interval = Duration::from_secs_f64(args.interval);
+
+    if let Some(path) = args.demo {
+        let mut demo = demo::Demo::load(&path, map)?;
+        if !args.watch {
+            let (graph, _, _) = demo.tick()?;
+            let style = render::Style {
+                color: !args.no_color && std::io::stdout().is_terminal(),
+            };
+            print!(
+                "{}",
+                render::render(&demo.world.map, &graph, &[], &[], &style)
+            );
+            return Ok(());
+        }
+        let map = tui::MapInfo::from(&demo.world.map);
+        return tui::run(map, modes, move || (demo.tick(), interval));
+    }
+
     if let Some(root) = args.root {
         map.root = root;
     }
@@ -111,10 +143,6 @@ fn main() -> Result<()> {
         .root
         .canonicalize()
         .with_context(|| format!("project root {} does not exist", map.root.display()))?;
-
-    if args.watch && !std::io::stdout().is_terminal() {
-        bail!("--watch needs a terminal; leave it out to print once");
-    }
 
     let github = GitHub::new(&map.root, Duration::from_secs(args.github_ttl));
     let world = World {
@@ -148,11 +176,6 @@ fn main() -> Result<()> {
     }
 
     let map = tui::MapInfo::from(&collectors.world.map);
-    let interval = Duration::from_secs_f64(args.interval);
-    let modes = tui::Modes {
-        placement: args.layout,
-        arrows: args.arrows,
-    };
     tui::run(map, modes, move || (collectors.tick(), interval))
 }
 

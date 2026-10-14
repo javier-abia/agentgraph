@@ -1,0 +1,113 @@
+# Made-up agents and issues for the urbandocs example map, to show the view
+# without herdr, GitHub or an OpenRouter key:
+#
+#   cargo run -- --map examples/urbandocs.agentgraph.toml \
+#     --demo examples/urbandocs.demo.toml --watch
+#
+# A status list advances one entry per tick (every --interval seconds).
+
+[[issue]]
+number = 112
+title = "Trim tokens in search results"
+module = "search"
+confidence = 0.91
+
+[[issue]]
+number = 108
+title = "Fidelity disclosure on read"
+module = "read"
+confidence = 0.88
+
+# A parent issue: no agent is on it, so it only groups its sub-issues.
+[[issue]]
+number = 90
+title = "Extraction fidelity, all decrees"
+
+[[issue]]
+number = 95
+parent = 90
+title = "Recover lost list markers"
+module = "ingest"
+confidence = 0.84
+
+[[issue]]
+number = 97
+title = "Rebuild the dog decree"
+module = "ingest"
+confidence = 0.79
+parent = 90
+
+[[issue]]
+number = 103
+title = "OCR the habitabilidad annex"
+module = "convert"
+confidence = 0.93
+
+[[issue]]
+number = 115
+title = "Pass rate per question"
+module = "eval-runs"
+confidence = 0.86
+
+[[issue]]
+number = 117
+title = "Partial credit in grading"
+module = "judge"
+confidence = 0.82
+
+# Below min_confidence, so it shows under "Not placed in a module".
+[[issue]]
+number = 120
+title = "Benchmark an agentic lookup loop"
+module = "research"
+confidence = 0.41
+
+[[agent]]
+pane = "w1:p1"
+status = ["working", "working", "working", "idle", "working"]
+branch = "search-tokens-112"
+worktree = "search-tokens"
+
+[[agent]]
+pane = "w1:p2"
+agent = "codex"
+status = ["idle", "working", "working", "working", "done"]
+branch = "fidelity-disclosure-108"
+
+[[agent]]
+pane = "w2:p1"
+status = "working"
+branch = "list-markers-95"
+worktree = "list-markers"
+
+[[agent]]
+pane = "w2:p2"
+status = ["blocked", "blocked", "working", "working", "working", "idle"]
+branch = "dog-decree-97"
+worktree = "dog-decree"
+
+[[agent]]
+pane = "w2:p3"
+agent = "codex"
+status = ["working", "working", "working", "working", "blocked"]
+branch = "ocr-annex-103"
+
+[[agent]]
+pane = "w3:p1"
+status = ["working", "idle", "working"]
+branch = "feat/pass-rate-115"
+
+[[agent]]
+pane = "w3:p2"
+agent = "opencode"
+status = ["working", "working", "idle", "idle"]
+branch = "partial-credit-117"
+
+[[agent]]
+pane = "w4:p1"
+status = "idle"
+branch = "lookup-loop-120"
+
+[[agent]]
+pane = "w4:p2"
+status = ["working", "idle"]
