@@ -1,11 +1,11 @@
 ---
-name: agentgraph-map
-description: Write or revise an agentgraph module map (`.agentgraph.toml`). Use when creating a project's first map, or when adding, splitting, merging or renaming modules.
+name: herdr-map
+description: Write or revise a herdr-map module map (`.herdr-map.toml`). Use when creating a project's first map, or when adding, splitting, merging or renaming modules.
 ---
 
-# agentgraph module map
+# herdr-map module map
 
-agentgraph shows which GitHub issue each coding agent is working on, under the module of the project that issue belongs to. The module map tells it what the modules are. The issue → module decision is made by a classifier (Jev) that reads **only** the issue's title and body plus each module's `label` and `description`. It asks one yes/no question per module: "Does the work described in the issue belong mainly to `module`?" So the descriptions are the map. Everything else is structure around them.
+herdr-map shows which GitHub issue each coding agent is working on, under the module of the project that issue belongs to. The module map tells it what the modules are. The issue → module decision is made by a classifier (Jev) that reads **only** the issue's title and body plus each module's `label` and `description`. It asks one yes/no question per module: "Does the work described in the issue belong mainly to `module`?" So the descriptions are the map. Everything else is structure around them.
 
 ## Steps
 
@@ -73,17 +73,17 @@ Done when every edge names a concrete thing that flows (a call, a file, an index
 Load the map. With no agents and no GitHub, this parses it, checks globs and edge ids, and prints every module:
 
 ```sh
-agentgraph --map .agentgraph.toml --no-github \
+herdr-map --map .herdr-map.toml --no-github \
   --snapshot <(echo '{"result":{"snapshot":{"agents":[]}}}')
 ```
 
-If `agentgraph` is not on PATH, ask the user how they run it.
+If `herdr-map` is not on PATH, ask the user how they run it.
 
 Then show the user the map with one line per module: its label and, when step 3 had open issues, the issues it would catch.
 
 ## File format
 
-The file lives at the project root as `.agentgraph.toml`.
+The file lives at the project root as `.herdr-map.toml`.
 
 ```toml
 [project]

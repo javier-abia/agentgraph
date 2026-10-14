@@ -1,4 +1,4 @@
-# agentgraph
+# herdr-map
 
 A terminal view of which GitHub issue each herdr agent is working on, and which modules of the project those issues touch.
 
@@ -9,7 +9,7 @@ A stable part of the project (MCP server, Search, Ingest…), declared in the mo
 _Avoid_: feature (the v0 name; "feature" now means what an issue builds)
 
 **Module map**:
-The `.agentgraph.toml` file: `[project]` (name, root, `min_confidence`), `[[module]]` entries, and `[[edge]]` dependencies between modules.
+The `.herdr-map.toml` file: `[project]` (name, root, `min_confidence`), `[[module]]` entries, and `[[edge]]` dependencies between modules.
 _Avoid_: feature map
 
 **Issue**:

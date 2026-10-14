@@ -1,7 +1,7 @@
 # Made-up agents and issues for the agentic-rag example map, to show the view
 # without herdr, GitHub or an OpenRouter key:
 #
-#   cargo run -- --map examples/agentic-rag.agentgraph.toml \
+#   cargo run -- --map examples/agentic-rag.herdr-map.toml \
 #     --demo examples/agentic-rag.demo.toml --watch
 #
 # A status list advances one entry per tick (every --interval seconds).

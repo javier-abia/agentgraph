@@ -1,6 +1,6 @@
 //! The module map: the stable parts of the project (modules), what each is
 //! about (description and path globs, which the classifier reads), and the
-//! dependency edges between them. Loaded from `.agentgraph.toml`.
+//! dependency edges between them. Loaded from `.herdr-map.toml`.
 
 use std::path::{Path, PathBuf};
 
@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use globset::GlobBuilder;
 use serde::Deserialize;
 
-pub const FILE_NAME: &str = ".agentgraph.toml";
+pub const FILE_NAME: &str = ".herdr-map.toml";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -127,7 +127,7 @@ impl ModuleMap {
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("reading module map {}", path.display()))?;
-        // Absolute, so a bare `.agentgraph.toml` has a real parent directory
+        // Absolute, so a bare `.herdr-map.toml` has a real parent directory
         // (and the root a folder name to default `project.name` to).
         let abs = std::path::absolute(path)?;
         let dir = abs.parent().unwrap_or(Path::new("/"));
@@ -147,7 +147,7 @@ fn check_globs(patterns: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Walks up from `start` looking for `.agentgraph.toml`, like git does for `.git`.
+/// Walks up from `start` looking for `.herdr-map.toml`, like git does for `.git`.
 pub fn discover(start: &Path) -> Option<PathBuf> {
     start
         .ancestors()

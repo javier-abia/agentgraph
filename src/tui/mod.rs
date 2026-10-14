@@ -279,7 +279,7 @@ fn draw(f: &mut Frame, app: &mut App) {
 /// Project, agent counts, and how fresh the data is.
 fn header_line(app: &App) -> Line<'static> {
     let mut spans = vec![
-        Span::styled(" ◆ agentgraph ", Style::new().fg(C_ACCENT).bold()),
+        Span::styled(" ◆ herdr-map ", Style::new().fg(C_ACCENT).bold()),
         Span::from(format!("{} ", app.map.name)).bold(),
     ];
     if let Some(g) = &app.graph {
