@@ -12,7 +12,11 @@ Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 
 ### Domain docs
 
-Single-context layout (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.
+Single-context layout (`docs/CONTEXT.md` + `docs/adr/`). See `docs/agents/domain.md`.
+
+### Coding standards
+
+Judgement calls for reviewing a diff (layering, tests) are in `docs/CODING_STANDARDS.md`; mechanical rules live in `scripts/`.
 
 ### herdr API reference
 
