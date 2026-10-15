@@ -61,11 +61,11 @@ export HERDR_MAP_OPENROUTER_API_KEY=sk-or-...
 2. **Run it** from anywhere inside the project while your agents run in herdr:
 
    ```sh
-   herdr-map           # print once
-   herdr-map --watch   # interactive view
+   herdr-map         # interactive view
+   herdr-map --once  # print once (also what you get when piped)
    ```
 
-In `--watch`, each module is a box holding its issues and the agents on them, with arrows following the data (for an edge `from = "server", to = "search"` the arrow runs Search ─▶ MCP server). Modules with no agent are grayed out. Issues not placed in a module and agents with no issue sit in boxes underneath.
+In the interactive view, each module is a box holding its issues and the agents on them, with arrows following the data (for an edge `from = "server", to = "search"` the arrow runs Search ─▶ MCP server). Modules with no agent are grayed out. Issues not placed in a module and agents with no issue sit in boxes underneath.
 
 Two settings change how the diagram is laid out:
 
@@ -85,9 +85,10 @@ Two settings change how the diagram is laid out:
 |---|---|
 | `--map FILE` | Module map. Default: nearest `.herdr-map.toml` walking up from the cwd. |
 | `--root DIR` | Overrides `project.root` from the map. |
-| `--watch`, `--interval S` | Open the interactive view, refreshed every S seconds (default 2). Needs a terminal. |
-| `--layout stacked\|chains` | Layout to start `--watch` in (default `stacked`). |
-| `--arrows trunks\|stubs` | How `--watch` starts drawing long arrows (default `trunks`). |
+| `--once` | Print the map once and exit instead of opening the interactive view. Implied when stdout is not a terminal. |
+| `--interval S` | Seconds between refreshes of the interactive view (default 2). |
+| `--layout stacked\|chains` | Layout to start the interactive view in (default `stacked`). |
+| `--arrows trunks\|stubs` | How the interactive view starts drawing long arrows (default `trunks`). |
 | `--github-ttl S` | How long GitHub data is cached (default 60s). |
 | `--no-github` | Skip GitHub; every agent is then listed under "No issue". |
 | `--snapshot FILE` | Read agents from a saved `herdr api snapshot` instead of herdr. |
@@ -151,7 +152,7 @@ It runs the same checks as CI: `cargo fmt --check`, `cargo clippy --all-targets 
 Run from the checkout against the example map, with made-up agents and issues, which needs no herdr, GitHub or API key:
 
 ```sh
-cargo run -- --map examples/agentic-rag.herdr-map.toml --demo examples/agentic-rag.demo.toml --watch
+cargo run -- --map examples/agentic-rag.herdr-map.toml --demo examples/agentic-rag.demo.toml
 ```
 
 ## Roadmap

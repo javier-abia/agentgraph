@@ -73,7 +73,7 @@ Done when every edge names a concrete thing that flows (a call, a file, an index
 Load the map. With no agents and no GitHub, this parses it, checks globs and edge ids, and prints every module:
 
 ```sh
-herdr-map --map .herdr-map.toml --no-github \
+herdr-map --once --map .herdr-map.toml --no-github \
   --snapshot <(echo '{"result":{"snapshot":{"agents":[]}}}')
 ```
 
