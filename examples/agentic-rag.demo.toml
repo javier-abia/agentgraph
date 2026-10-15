@@ -2,7 +2,7 @@
 # without herdr, GitHub or an OpenRouter key:
 #
 #   cargo run -- --map examples/agentic-rag.herdr-map.toml \
-#     --demo examples/agentic-rag.demo.toml --watch
+#     --demo examples/agentic-rag.demo.toml
 #
 # A status list advances one entry per tick (every --interval seconds).
 

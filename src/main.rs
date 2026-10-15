@@ -15,7 +15,7 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::Parser;
 
 use cache::Cache;
@@ -40,20 +40,20 @@ struct Args {
     #[arg(long)]
     root: Option<PathBuf>,
 
-    /// Open the interactive view, which keeps itself up to date, instead
-    /// of printing once.
+    /// Print the map once and exit instead of opening the interactive view.
+    /// Implied when stdout is not a terminal.
     #[arg(short, long)]
-    watch: bool,
+    once: bool,
 
-    /// Seconds between updates in watch mode.
+    /// Seconds between updates in the interactive view.
     #[arg(long, default_value_t = 2.0)]
     interval: f64,
 
-    /// How watch mode places modules at the start; `v` switches it.
+    /// How the interactive view places modules at the start; `v` switches it.
     #[arg(long, value_enum, default_value_t)]
     layout: tui::Placement,
 
-    /// How watch mode draws arrows that skip a row at the start; `e`
+    /// How the interactive view draws arrows that skip a row at the start; `e`
     /// switches it.
     #[arg(long, value_enum, default_value_t)]
     arrows: tui::Arrows,
@@ -109,9 +109,7 @@ fn main() -> Result<()> {
         }
     };
     let mut map = ModuleMap::load(&map_path)?;
-    if args.watch && !std::io::stdout().is_terminal() {
-        bail!("--watch needs a terminal; leave it out to print once");
-    }
+    let once = args.once || !std::io::stdout().is_terminal();
     let modes = tui::Modes {
         placement: args.layout,
         arrows: args.arrows,
@@ -120,7 +118,7 @@ fn main() -> Result<()> {
 
     if let Some(path) = args.demo {
         let mut demo = demo::Demo::load(&path, map)?;
-        if !args.watch {
+        if once {
             let (graph, _, _) = demo.tick()?;
             let style = render::Style {
                 color: !args.no_color && std::io::stdout().is_terminal(),
@@ -163,7 +161,7 @@ fn main() -> Result<()> {
         snapshot: args.snapshot,
     };
 
-    if !args.watch {
+    if once {
         let (graph, errors, warnings) = collectors.tick()?;
         let style = render::Style {
             color: !args.no_color && std::io::stdout().is_terminal(),
